@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "mmwm",
+    name: "tatami",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "mmwm",
+            name: "tatami",
             path: "Sources",
             linkerSettings: [
                 .linkedFramework("AppKit"),

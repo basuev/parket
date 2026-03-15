@@ -1,4 +1,4 @@
-APP_NAME = mmwm
+APP_NAME = tatami
 BUNDLE = $(APP_NAME).app
 INSTALL_DIR = /Applications/$(BUNDLE)
 BUILD_DIR = .build/release

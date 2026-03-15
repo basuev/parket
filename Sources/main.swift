@@ -21,7 +21,7 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
 guard checkAccessibility() else {
-    fputs("mmwm: grant Accessibility permission and restart\n", stderr)
+    fputs("tatami: grant Accessibility permission and restart\n", stderr)
     exit(1)
 }
 
@@ -37,5 +37,5 @@ hotkeys.start()
 let observer = WindowObserver.shared
 observer.start()
 
-fputs("mmwm: running\n", stderr)
+fputs("tatami: running\n", stderr)
 app.run()

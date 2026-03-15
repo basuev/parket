@@ -1,5 +1,6 @@
 .build/
-mmwm.app/
+tatami.app/
 .DS_Store
 CLAUDE.md
 AGENTS.md
+mmwm.app/

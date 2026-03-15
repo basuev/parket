@@ -24,7 +24,7 @@ final class Hotkeys {
             callback: Hotkeys.callback,
             userInfo: nil
         ) else {
-            fputs("mmwm: failed to create event tap (check Input Monitoring permission)\n", stderr)
+            fputs("tatami: failed to create event tap (check Input Monitoring permission)\n", stderr)
             exit(1)
         }
 

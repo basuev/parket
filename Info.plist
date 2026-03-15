@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.mmwm.app</string>
+    <string>com.tatami.app</string>
     <key>CFBundleName</key>
-    <string>mmwm</string>
+    <string>tatami</string>
     <key>CFBundleExecutable</key>
-    <string>mmwm</string>
+    <string>tatami</string>
     <key>CFBundleVersion</key>
     <string>1.0</string>
     <key>CFBundleShortVersionString</key>
