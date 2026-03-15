@@ -98,19 +98,16 @@ private final class BadgeView: NSView {
             ctx.addPath(path)
             ctx.setFillColor(badgeColor.cgColor)
             ctx.fillPath()
-
             ctx.setBlendMode(.destinationOut)
-            ctx.textPosition = CGPoint(x: textX, y: textY)
-            CTLineDraw(line, ctx)
         } else {
             ctx.addPath(path)
             ctx.setStrokeColor(badgeColor.cgColor)
             ctx.setLineWidth(1)
             ctx.strokePath()
-
             ctx.setFillColor(badgeColor.cgColor)
-            ctx.textPosition = CGPoint(x: textX, y: textY)
-            CTLineDraw(line, ctx)
         }
+
+        ctx.textPosition = CGPoint(x: textX, y: textY)
+        CTLineDraw(line, ctx)
     }
 }
