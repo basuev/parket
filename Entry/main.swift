@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import TatamiCore
 
 func checkAccessibility() -> Bool {
     let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary

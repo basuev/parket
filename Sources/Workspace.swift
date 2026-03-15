@@ -1,7 +1,7 @@
 import Foundation
 
-final class WorkspaceManager {
-    static let shared = WorkspaceManager()
+package final class WorkspaceManager {
+    package static let shared = WorkspaceManager()
 
     private(set) var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.workspaceCount)
     private(set) var layouts: [Layout] = Array(repeating: .tile, count: Config.workspaceCount)
@@ -9,7 +9,7 @@ final class WorkspaceManager {
 
     private init() {}
 
-    func bootstrap() {
+    package func bootstrap() {
         let windows = WindowManager.allWindows()
         workspaces[0] = windows
         retile()
@@ -129,7 +129,7 @@ final class WorkspaceManager {
         return screen
     }
 
-    func restoreAllWindows() {
+    package func restoreAllWindows() {
         let screen = WindowManager.screenFrame()
         let center = CGPoint(
             x: screen.origin.x + screen.width / 4,

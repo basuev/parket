@@ -1,6 +1,6 @@
 import Cocoa
 
-struct Binding {
+package struct Binding {
     let key: UInt16
     let shift: Bool
     let command: String
@@ -12,7 +12,7 @@ struct Binding {
     }
 }
 
-enum Key {
+package enum Key {
     static let `return`: UInt16 = 36
     static let tab: UInt16 = 48
     static let space: UInt16 = 49
@@ -70,7 +70,7 @@ enum Key {
     static let grave: UInt16 = 50
 }
 
-enum Config {
+package enum Config {
     static let workspaceCount = 9
     static let masterRatio: CGFloat = 0.55
     static let modifier: CGEventFlags = .maskAlternate

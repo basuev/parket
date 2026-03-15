@@ -1,7 +1,7 @@
 import AppKit
 
-final class StatusBar: NSObject {
-    static let shared = StatusBar()
+package final class StatusBar: NSObject {
+    package static let shared = StatusBar()
 
     private let statusItem: NSStatusItem
 

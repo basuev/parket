@@ -1,8 +1,8 @@
 import AppKit
 import ApplicationServices
 
-final class WindowObserver {
-    static let shared = WindowObserver()
+package final class WindowObserver {
+    package static let shared = WindowObserver()
 
     private static let maxRetries = 10
     private static let retryInterval: TimeInterval = 0.05
@@ -11,7 +11,7 @@ final class WindowObserver {
 
     private init() {}
 
-    func start() {
+    package func start() {
         let nc = NSWorkspace.shared.notificationCenter
 
         nc.addObserver(

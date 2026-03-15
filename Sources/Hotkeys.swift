@@ -1,8 +1,8 @@
 import Cocoa
 import ApplicationServices
 
-final class Hotkeys {
-    static let shared = Hotkeys()
+package final class Hotkeys {
+    package static let shared = Hotkeys()
 
     private static let numberKeys: [UInt16: Int] = [
         18: 1, 19: 2, 20: 3, 21: 4, 23: 5,
@@ -13,7 +13,7 @@ final class Hotkeys {
 
     private init() {}
 
-    func start() {
+    package func start() {
         let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
 
         guard let tap = CGEvent.tapCreate(
