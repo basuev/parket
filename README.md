@@ -17,18 +17,31 @@ swift, zero dependencies.
 |-----|--------|
 | `Option + 1-9` | switch workspace |
 | `Option + Shift + 1-9` | move focused window to workspace |
+| `Option + J/K` | focus next/prev window |
+| `Option + Return` | swap focused window with master |
+
+custom bindings are defined in `Config.swift` - see configuration below.
 
 ## configuration
 
-all settings live in `Sources/Config.swift` - edit and rebuild, like dwm's `config.h`.
+like dwm's `config.def.h` / `config.h`. defaults live in `Sources/Config.def.swift` (tracked in git). on first build, it is copied to `Sources/Config.swift` (gitignored) - your local config.
+
+edit `Sources/Config.swift` and rebuild:
 
 ```swift
 enum Config {
     static let workspaceCount = 9
     static let masterRatio: CGFloat = 0.55
     static let modifier: CGEventFlags = .maskAlternate
+
+    static let customBindings: [Binding] = [
+        Binding(key: Key.return, shift: true, command: "open -n -a Terminal"),
+        Binding(key: Key.b, shift: true, command: "open -n -a Safari"),
+    ]
 }
 ```
+
+`Key` enum provides named constants for all common key codes (`Key.return`, `Key.space`, `Key.a`-`Key.z`, etc). custom bindings always require `Config.modifier` (alt by default); the `shift` parameter adds shift to the combo.
 
 ## requirements
 
@@ -37,6 +50,13 @@ enum Config {
 - input monitoring permission
 
 ## install
+
+```bash
+brew tap basuev/tatami
+brew install --cask tatami
+```
+
+or build from source:
 
 ```bash
 make install
