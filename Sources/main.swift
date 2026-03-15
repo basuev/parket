@@ -2,7 +2,8 @@ import AppKit
 import ApplicationServices
 
 func checkAccessibility() -> Bool {
-    AXIsProcessTrusted()
+    let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
+    return AXIsProcessTrustedWithOptions(options)
 }
 
 func setupCrashSafety() {
@@ -21,7 +22,15 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
 guard checkAccessibility() else {
-    fputs("tatami: grant Accessibility permission and restart\n", stderr)
+    let alert = NSAlert()
+    alert.messageText = "tatami requires Accessibility permission"
+    alert.informativeText = "grant access in System Settings -> Privacy & Security -> Accessibility, then relaunch tatami."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "open System Settings")
+    alert.addButton(withTitle: "quit")
+    if alert.runModal() == .alertFirstButtonReturn {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    }
     exit(1)
 }
 
