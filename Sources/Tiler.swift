@@ -1,8 +1,6 @@
 import Foundation
 
 enum Tiler {
-    static let masterRatio: CGFloat = 0.55
-
     static func tile(windows: [TrackedWindow], screen: CGRect) {
         guard !windows.isEmpty else { return }
 
@@ -11,7 +9,7 @@ enum Tiler {
             return
         }
 
-        let masterWidth = floor(screen.width * masterRatio)
+        let masterWidth = floor(screen.width * Config.masterRatio)
         let masterRect = CGRect(
             x: screen.origin.x,
             y: screen.origin.y,

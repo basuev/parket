@@ -3,7 +3,7 @@ import Foundation
 final class WorkspaceManager {
     static let shared = WorkspaceManager()
 
-    private(set) var workspaces: [[TrackedWindow]] = Array(repeating: [], count: 9)
+    private(set) var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.workspaceCount)
     private(set) var active: Int = 0
 
     private let offscreen = CGPoint(x: 10000, y: 10000)
@@ -18,7 +18,7 @@ final class WorkspaceManager {
     }
 
     func switchTo(_ index: Int) {
-        guard index >= 0, index < 9, index != active else { return }
+        guard index >= 0, index < Config.workspaceCount, index != active else { return }
 
         for win in workspaces[active] {
             win.setPosition(offscreen)
@@ -35,7 +35,7 @@ final class WorkspaceManager {
     }
 
     func moveActiveWindowTo(_ index: Int) {
-        guard index >= 0, index < 9, index != active else { return }
+        guard index >= 0, index < Config.workspaceCount, index != active else { return }
         guard let focused = WindowManager.focusedWindow() else { return }
 
         guard let i = workspaces[active].firstIndex(of: focused) else { return }
@@ -63,7 +63,7 @@ final class WorkspaceManager {
 
     func removeWindow(pid: pid_t) {
         var needsRetile = false
-        for i in 0..<9 {
+        for i in 0..<Config.workspaceCount {
             let before = workspaces[i].count
             workspaces[i].removeAll { $0.pid == pid }
             if workspaces[i].count != before {
@@ -78,7 +78,7 @@ final class WorkspaceManager {
 
     func removeWindow(_ window: TrackedWindow) {
         var needsRetile = false
-        for i in 0..<9 {
+        for i in 0..<Config.workspaceCount {
             if let idx = workspaces[i].firstIndex(of: window) {
                 workspaces[i].remove(at: idx)
                 needsRetile = needsRetile || (i == active)

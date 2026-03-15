@@ -45,12 +45,12 @@ final class Hotkeys {
         let flags = event.flags
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
-        let hasOption = flags.contains(.maskAlternate)
+        let hasModifier = flags.contains(Config.modifier)
         let hasShift = flags.contains(.maskShift)
         let hasCmd = flags.contains(.maskCommand)
         let hasCtrl = flags.contains(.maskControl)
 
-        guard hasOption, !hasCmd, !hasCtrl,
+        guard hasModifier, !hasCmd, !hasCtrl,
               let number = numberKeys[keyCode]
         else {
             return Unmanaged.passRetained(event)
