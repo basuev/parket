@@ -18,9 +18,7 @@ final class WindowObserver {
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                   app.activationPolicy == .regular
             else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self?.handleAppLaunched(app)
-            }
+            self?.handleAppLaunched(app)
         }
 
         nc.addObserver(
@@ -41,20 +39,38 @@ final class WindowObserver {
 
     private func handleAppLaunched(_ app: NSRunningApplication) {
         let pid = app.processIdentifier
+        observeApp(pid: pid)
+        tryAdoptWindows(pid: pid, attempt: 0)
+    }
+
+    private func tryAdoptWindows(pid: pid_t, attempt: Int) {
         let appRef = AXUIElementCreateApplication(pid)
 
         var windowsValue: AnyObject?
         guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
               let windows = windowsValue as? [AXUIElement]
-        else { return }
+        else {
+            if attempt < 10 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    self.tryAdoptWindows(pid: pid, attempt: attempt + 1)
+                }
+            }
+            return
+        }
 
+        var added = false
         for win in windows {
             let tw = TrackedWindow(element: win, pid: pid)
             guard tw.isTileable() else { continue }
             WorkspaceManager.shared.addWindow(tw)
+            added = true
         }
 
-        observeApp(pid: pid)
+        if !added && attempt < 10 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.tryAdoptWindows(pid: pid, attempt: attempt + 1)
+            }
+        }
     }
 
     private func observeApp(pid: pid_t) {
@@ -75,12 +91,19 @@ final class WindowObserver {
         let notif = notification as String
 
         if notif == kAXWindowCreatedNotification {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                var pidValue: pid_t = 0
-                AXUIElementGetPid(element, &pidValue)
-                let tw = TrackedWindow(element: element, pid: pidValue)
-                guard tw.isTileable() else { return }
-                WorkspaceManager.shared.addWindow(tw)
+            var pidValue: pid_t = 0
+            AXUIElementGetPid(element, &pidValue)
+            WindowObserver.shared.tryAdoptWindow(element: element, pid: pidValue, attempt: 0)
+        }
+    }
+
+    private func tryAdoptWindow(element: AXUIElement, pid: pid_t, attempt: Int) {
+        let tw = TrackedWindow(element: element, pid: pid)
+        if tw.isTileable() {
+            WorkspaceManager.shared.addWindow(tw)
+        } else if attempt < 10 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.tryAdoptWindow(element: element, pid: pid, attempt: attempt + 1)
             }
         }
     }
