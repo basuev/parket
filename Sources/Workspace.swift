@@ -18,10 +18,9 @@ final class WorkspaceManager {
     func switchTo(_ index: Int) {
         guard index >= 0, index < Config.workspaceCount, index != active else { return }
 
-        let screen = WindowManager.screenFrame()
         let previous = active
         active = index
-        retile()
+        let screen = retile()
 
         for win in workspaces[previous] {
             win.hideInCorner(screen)
@@ -40,12 +39,10 @@ final class WorkspaceManager {
 
         guard let i = workspaces[active].firstIndex(of: focused) else { return }
         workspaces[active].remove(at: i)
-
-        let screen = WindowManager.screenFrame()
         workspaces[index].insert(focused, at: 0)
-        focused.hideInCorner(screen)
 
-        retile()
+        let screen = retile()
+        focused.hideInCorner(screen)
 
         if let next = workspaces[active].first {
             next.focus()
@@ -63,52 +60,39 @@ final class WorkspaceManager {
     }
 
     func removeWindow(pid: pid_t) {
-        var needsRetile = false
-        for i in 0..<Config.workspaceCount {
-            let before = workspaces[i].count
-            workspaces[i].removeAll { $0.pid == pid }
-            if workspaces[i].count != before {
-                needsRetile = needsRetile || (i == active)
-            }
-        }
-        if needsRetile {
-            retile()
-        }
-        StatusBar.shared.update()
+        removeWindows { $0.pid == pid }
     }
 
     func removeWindow(_ window: TrackedWindow) {
+        removeWindows { $0 == window }
+    }
+
+    private func removeWindows(where predicate: (TrackedWindow) -> Bool) {
         var needsRetile = false
+        var changed = false
         for i in 0..<Config.workspaceCount {
-            if let idx = workspaces[i].firstIndex(of: window) {
-                workspaces[i].remove(at: idx)
+            let before = workspaces[i].count
+            workspaces[i].removeAll(where: predicate)
+            if workspaces[i].count != before {
+                changed = true
                 needsRetile = needsRetile || (i == active)
             }
         }
-        if needsRetile {
-            retile()
-        }
+        guard changed else { return }
+        if needsRetile { retile() }
         StatusBar.shared.update()
     }
 
-    func focusNext() {
-        let windows = workspaces[active]
-        guard windows.count > 1 else { return }
-        guard let focused = WindowManager.focusedWindow(),
-              let i = windows.firstIndex(of: focused)
-        else { return }
-        let next = (i + 1) % windows.count
-        windows[next].focus()
-    }
+    func focusNext() { focusOffset(1) }
+    func focusPrev() { focusOffset(-1) }
 
-    func focusPrev() {
+    private func focusOffset(_ offset: Int) {
         let windows = workspaces[active]
-        guard windows.count > 1 else { return }
-        guard let focused = WindowManager.focusedWindow(),
+        guard windows.count > 1,
+              let focused = WindowManager.focusedWindow(),
               let i = windows.firstIndex(of: focused)
         else { return }
-        let prev = (i - 1 + windows.count) % windows.count
-        windows[prev].focus()
+        windows[(i + offset + windows.count) % windows.count].focus()
     }
 
     func swapMaster() {
@@ -118,14 +102,17 @@ final class WorkspaceManager {
               i != 0
         else { return }
         workspaces[active].swapAt(0, i)
-        retile()
+        let screen = WindowManager.screenFrame()
+        Tiler.tile(windows: workspaces[active], screen: screen)
         workspaces[active][0].focus()
     }
 
-    func retile() {
-        workspaces[active].removeAll { !$0.isAlive() || !$0.isStandard() || $0.isMinimized() || $0.isFullscreen() }
+    @discardableResult
+    func retile() -> CGRect {
+        workspaces[active].removeAll { !$0.isTileable() }
         let screen = WindowManager.screenFrame()
         Tiler.tile(windows: workspaces[active], screen: screen)
+        return screen
     }
 
     func restoreAllWindows() {
