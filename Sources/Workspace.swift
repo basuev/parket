@@ -6,8 +6,6 @@ final class WorkspaceManager {
     private(set) var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.workspaceCount)
     private(set) var active: Int = 0
 
-    private let offscreen = CGPoint(x: 10000, y: 10000)
-
     private init() {}
 
     func bootstrap() {
@@ -21,7 +19,7 @@ final class WorkspaceManager {
         guard index >= 0, index < Config.workspaceCount, index != active else { return }
 
         for win in workspaces[active] {
-            win.setPosition(offscreen)
+            win.hideOffscreen()
         }
 
         active = index
@@ -42,7 +40,7 @@ final class WorkspaceManager {
         workspaces[active].remove(at: i)
 
         workspaces[index].insert(focused, at: 0)
-        focused.setPosition(offscreen)
+        focused.hideOffscreen()
 
         retile()
 
@@ -88,6 +86,37 @@ final class WorkspaceManager {
             retile()
         }
         StatusBar.shared.update()
+    }
+
+    func focusNext() {
+        let windows = workspaces[active]
+        guard windows.count > 1 else { return }
+        guard let focused = WindowManager.focusedWindow(),
+              let i = windows.firstIndex(of: focused)
+        else { return }
+        let next = (i + 1) % windows.count
+        windows[next].focus()
+    }
+
+    func focusPrev() {
+        let windows = workspaces[active]
+        guard windows.count > 1 else { return }
+        guard let focused = WindowManager.focusedWindow(),
+              let i = windows.firstIndex(of: focused)
+        else { return }
+        let prev = (i - 1 + windows.count) % windows.count
+        windows[prev].focus()
+    }
+
+    func swapMaster() {
+        guard workspaces[active].count > 1 else { return }
+        guard let focused = WindowManager.focusedWindow(),
+              let i = workspaces[active].firstIndex(of: focused),
+              i != 0
+        else { return }
+        workspaces[active].swapAt(0, i)
+        retile()
+        workspaces[active][0].focus()
     }
 
     func retile() {
