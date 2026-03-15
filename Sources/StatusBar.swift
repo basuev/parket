@@ -92,7 +92,7 @@ private final class BadgeView: NSView {
         let line = CTLineCreateWithAttributedString(str)
         let lineBounds = CTLineGetBoundsWithOptions(line, .useOpticalBounds)
         let textX = bounds.midX - lineBounds.width / 2 - lineBounds.origin.x
-        let textY = bounds.midY - lineBounds.height / 2 - lineBounds.origin.y
+        let textY = bounds.midY - font.capHeight / 2
 
         if active {
             ctx.addPath(path)
