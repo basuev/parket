@@ -49,9 +49,8 @@ final class WindowObserver {
         else { return }
 
         for win in windows {
-            guard WindowManager.isStandardWindow(win) else { continue }
             let tw = TrackedWindow(element: win, pid: pid)
-            if tw.isMinimized() || tw.isFullscreen() { continue }
+            guard tw.isTileable() else { continue }
             WorkspaceManager.shared.addWindow(tw)
         }
 
@@ -77,14 +76,11 @@ final class WindowObserver {
 
         if notif == kAXWindowCreatedNotification {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                guard WindowManager.isStandardWindow(element) else { return }
-
                 var pidValue: pid_t = 0
                 AXUIElementGetPid(element, &pidValue)
                 let tw = TrackedWindow(element: element, pid: pidValue)
-                if !tw.isMinimized(), !tw.isFullscreen() {
-                    WorkspaceManager.shared.addWindow(tw)
-                }
+                guard tw.isTileable() else { return }
+                WorkspaceManager.shared.addWindow(tw)
             }
         }
     }

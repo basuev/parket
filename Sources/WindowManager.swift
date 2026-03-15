@@ -75,6 +75,10 @@ struct TrackedWindow: Equatable {
         WindowManager.isStandardWindow(element)
     }
 
+    func isTileable() -> Bool {
+        isAlive() && isStandard() && !isMinimized() && !isFullscreen()
+    }
+
     func isAlive() -> Bool {
         var value: AnyObject?
         return AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .success
@@ -103,9 +107,8 @@ enum WindowManager {
             else { continue }
 
             for win in windows {
-                guard isStandardWindow(win) else { continue }
                 let tw = TrackedWindow(element: win, pid: pid)
-                if tw.isMinimized() || tw.isFullscreen() { continue }
+                guard tw.isTileable() else { continue }
                 result.append(tw)
             }
         }
