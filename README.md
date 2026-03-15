@@ -8,6 +8,7 @@ swift, zero dependencies.
 
 - **workspaces** - 9 virtual workspaces via offscreen window hiding
 - **master-stack tiling** - new windows auto-tile in dwm-style layout
+- **monocle layout** - per-workspace fullscreen mode, toggle with option+m
 - **menubar indicator** - badge widgets show active workspace and occupied ones
 - **custom keybindings** - bind any key combo to shell commands, compile-time config
 - **crash safety** - all windows restore on exit
@@ -20,6 +21,7 @@ swift, zero dependencies.
 | `Option + Shift + 1-9` | move focused window to workspace |
 | `Option + J/K` | focus next/prev window |
 | `Option + Return` | swap focused window with master |
+| `Option + M` | toggle monocle layout |
 
 custom bindings are defined in `Config.swift` - see configuration below.
 
@@ -103,8 +105,8 @@ make uninstall
 | auto-tiling | yes | yes | yes | yes |
 | virtual workspaces | yes | yes | yes | yes |
 | config | compile-time | toml | cli | gui + yaml |
-| layouts | master-stack | tree (i3) | bsp | 14+ |
-| lines of code | ~500 | ~15k | ~20k | ~15k |
+| layouts | master-stack, monocle | tree (i3) | bsp | 14+ |
+| lines of code | ~600 | ~15k | ~20k | ~15k |
 
 tatami is not trying to compete with these projects. it exists for those who want the absolute minimum: a single layout, a few keybindings, zero dependencies, and code small enough to read in one sitting.
 
