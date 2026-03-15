@@ -3,11 +3,18 @@ BUNDLE = $(APP_NAME).app
 INSTALL_DIR = /Applications/$(BUNDLE)
 BUILD_DIR = .build/release
 
-.PHONY: build install clean dist
+.PHONY: build test check install clean dist
 
 build:
 	@test -f Sources/Config.swift || cp Sources/Config.def.swift Sources/Config.swift
-	swift build -c release
+	swift build --product tatami -c release
+
+test:
+	@test -f Sources/Config.swift || cp Sources/Config.def.swift Sources/Config.swift
+	swift build --product tatami-tests
+	.build/debug/tatami-tests
+
+check: test build
 
 install: build
 	@if [ ! -d "$(INSTALL_DIR)" ]; then \
