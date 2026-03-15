@@ -50,22 +50,36 @@ final class Hotkeys {
         let hasCmd = flags.contains(.maskCommand)
         let hasCtrl = flags.contains(.maskControl)
 
-        guard hasModifier, !hasCmd, !hasCtrl,
-              let number = numberKeys[keyCode]
-        else {
+        guard hasModifier, !hasCmd, !hasCtrl else {
             return Unmanaged.passRetained(event)
         }
 
-        let index = number - 1
-
-        DispatchQueue.main.async {
-            if hasShift {
-                WorkspaceManager.shared.moveActiveWindowTo(index)
-            } else {
-                WorkspaceManager.shared.switchTo(index)
+        if let number = numberKeys[keyCode] {
+            let index = number - 1
+            DispatchQueue.main.async {
+                if hasShift {
+                    WorkspaceManager.shared.moveActiveWindowTo(index)
+                } else {
+                    WorkspaceManager.shared.switchTo(index)
+                }
             }
+            return nil
         }
 
-        return nil
+        guard !hasShift else { return Unmanaged.passRetained(event) }
+
+        switch keyCode {
+        case 38:
+            DispatchQueue.main.async { WorkspaceManager.shared.focusNext() }
+            return nil
+        case 40:
+            DispatchQueue.main.async { WorkspaceManager.shared.focusPrev() }
+            return nil
+        case 36:
+            DispatchQueue.main.async { WorkspaceManager.shared.swapMaster() }
+            return nil
+        default:
+            return Unmanaged.passRetained(event)
+        }
     }
 }
