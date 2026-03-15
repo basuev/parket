@@ -35,7 +35,13 @@ struct TrackedWindow: Equatable {
         AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value)
     }
 
+    func hideOffscreen() {
+        setSize(CGSize(width: 1, height: 1))
+        setPosition(CGPoint(x: 100000, y: 100000))
+    }
+
     func setFrame(_ rect: CGRect) {
+        setSize(rect.size)
         setPosition(rect.origin)
         setSize(rect.size)
     }
