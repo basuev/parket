@@ -6,6 +6,7 @@ package final class Monitor {
     var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.workspaceCount)
     var layouts: [Layout] = Array(repeating: .tile, count: Config.workspaceCount)
     var active: Int = 0
+    var previousActive: Int = 0
 
     init(displayID: CGDirectDisplayID, screen: NSScreen) {
         self.displayID = displayID
@@ -16,6 +17,7 @@ package final class Monitor {
         guard index >= 0, index < Config.workspaceCount, index != active else { return }
 
         let previous = active
+        previousActive = previous
         active = index
         let screen = retile()
 

@@ -90,6 +90,11 @@ package final class Hotkeys {
             return nil
         }
 
+        if keyCode == Key.tab, !hasShift {
+            DispatchQueue.main.async { WorkspaceManager.shared.switchToLast() }
+            return nil
+        }
+
         guard !hasShift else { return Unmanaged.passRetained(event) }
 
         switch keyCode {

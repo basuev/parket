@@ -29,6 +29,12 @@ package final class WorkspaceManager {
         StatusBar.shared.update()
     }
 
+    func switchToLast() {
+        let target = focusedMonitor.previousActive
+        guard target != focusedMonitor.active else { return }
+        switchTo(target)
+    }
+
     func moveActiveWindowTo(_ index: Int) {
         focusedMonitor.moveActiveWindowTo(index)
         StatusBar.shared.update()
@@ -114,6 +120,7 @@ package final class WorkspaceManager {
                 monitor.workspaces = existing.workspaces
                 monitor.layouts = existing.layouts
                 monitor.active = existing.active
+                monitor.previousActive = existing.previousActive
             }
         }
 
