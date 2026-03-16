@@ -47,5 +47,12 @@ hotkeys.start()
 let observer = WindowObserver.shared
 observer.start()
 
+NotificationCenter.default.addObserver(
+    forName: NSApplication.didChangeScreenParametersNotification,
+    object: nil, queue: .main
+) { _ in
+    WorkspaceManager.shared.handleScreenChange()
+}
+
 fputs("tatami: running\n", stderr)
 app.run()

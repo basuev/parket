@@ -1,62 +1,42 @@
 import Foundation
+import AppKit
 
 package final class WorkspaceManager {
     package static let shared = WorkspaceManager()
 
-    private(set) var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.workspaceCount)
-    private(set) var layouts: [Layout] = Array(repeating: .tile, count: Config.workspaceCount)
-    private(set) var active: Int = 0
+    private(set) var monitors: [Monitor] = []
+    private(set) var focusedMonitorIndex: Int = 0
+
+    var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
 
     private init() {}
 
     package func bootstrap() {
+        rebuildMonitors()
+        focusedMonitorIndex = 0
         let windows = WindowManager.allWindows()
-        workspaces[0] = windows
-        retile()
+        for window in windows {
+            monitorForWindow(window).insertWindow(window)
+        }
+        for monitor in monitors {
+            monitor.retile()
+        }
         StatusBar.shared.update()
     }
 
     func switchTo(_ index: Int) {
-        guard index >= 0, index < Config.workspaceCount, index != active else { return }
-
-        let previous = active
-        active = index
-        let screen = retile()
-
-        for win in workspaces[previous] {
-            win.hideInCorner(screen)
-        }
-
-        if let master = workspaces[active].first {
-            master.focus()
-        }
-
+        focusedMonitor.switchTo(index)
         StatusBar.shared.update()
     }
 
     func moveActiveWindowTo(_ index: Int) {
-        guard index >= 0, index < Config.workspaceCount, index != active else { return }
-        guard let focused = WindowManager.focusedWindow() else { return }
-
-        guard let i = workspaces[active].firstIndex(of: focused) else { return }
-        workspaces[active].remove(at: i)
-        workspaces[index].insert(focused, at: 0)
-
-        let screen = retile()
-        focused.hideInCorner(screen)
-
-        if let next = workspaces[active].first {
-            next.focus()
-        }
-
+        focusedMonitor.moveActiveWindowTo(index)
         StatusBar.shared.update()
     }
 
     func addWindow(_ window: TrackedWindow) {
-        for ws in workspaces where ws.contains(window) { return }
-
-        workspaces[active].insert(window, at: 0)
-        retile()
+        for monitor in monitors where monitor.containsWindow(window) { return }
+        monitorForWindow(window).addWindow(window)
         StatusBar.shared.update()
     }
 
@@ -69,79 +49,120 @@ package final class WorkspaceManager {
     }
 
     private func removeWindows(where predicate: (TrackedWindow) -> Bool) {
-        var needsRetile = false
         var changed = false
-        for i in 0..<Config.workspaceCount {
-            let before = workspaces[i].count
-            workspaces[i].removeAll(where: predicate)
-            if workspaces[i].count != before {
+        for monitor in monitors {
+            if monitor.removeWindows(where: predicate) {
                 changed = true
-                needsRetile = needsRetile || (i == active)
             }
         }
         guard changed else { return }
-        if needsRetile { retile() }
         StatusBar.shared.update()
     }
 
-    func focusNext() { focusOffset(1) }
-    func focusPrev() { focusOffset(-1) }
+    func focusNext() {
+        focusedMonitor.focusNext()
+    }
 
-    private func focusOffset(_ offset: Int) {
-        let windows = workspaces[active]
-        guard windows.count > 1,
-              let focused = WindowManager.focusedWindow(),
-              let i = windows.firstIndex(of: focused)
-        else { return }
-        let target = windows[(i + offset + windows.count) % windows.count]
-        target.focus()
-        if layouts[active] == .monocle {
-            target.raise()
-        }
+    func focusPrev() {
+        focusedMonitor.focusPrev()
     }
 
     func swapMaster() {
-        guard workspaces[active].count > 1 else { return }
-        guard let focused = WindowManager.focusedWindow(),
-              let i = workspaces[active].firstIndex(of: focused),
-              i != 0
-        else { return }
-        workspaces[active].swapAt(0, i)
-        retile()
-        workspaces[active][0].focus()
+        focusedMonitor.swapMaster()
     }
 
     func toggleLayout() {
-        layouts[active] = layouts[active] == .tile ? .monocle : .tile
-        retile()
-        if layouts[active] == .monocle, let focused = WindowManager.focusedWindow(),
-           workspaces[active].contains(focused) {
-            focused.raise()
+        focusedMonitor.toggleLayout()
+        StatusBar.shared.update()
+    }
+
+    func focusMonitor(offset: Int) {
+        guard monitors.count > 1 else { return }
+        focusedMonitorIndex = (focusedMonitorIndex + offset + monitors.count) % monitors.count
+        let target = focusedMonitor
+        if let master = target.workspaces[target.active].first {
+            master.focus()
         }
         StatusBar.shared.update()
     }
 
-    @discardableResult
-    func retile() -> CGRect {
-        workspaces[active].removeAll { !$0.isTileable() }
-        let screen = WindowManager.screenFrame()
-        Tiler.tile(windows: workspaces[active], screen: screen, layout: layouts[active])
-        return screen
+    func moveWindowToMonitor(offset: Int) {
+        guard monitors.count > 1 else { return }
+        guard let focused = WindowManager.focusedWindow() else { return }
+
+        let source = focusedMonitor
+        guard source.removeFromActive(focused) else { return }
+        source.retile()
+
+        let targetIndex = (focusedMonitorIndex + offset + monitors.count) % monitors.count
+        let target = monitors[targetIndex]
+        target.insertWindow(focused)
+        target.retile()
+
+        focusedMonitorIndex = targetIndex
+        focused.focus()
+        StatusBar.shared.update()
+    }
+
+    package func handleScreenChange() {
+        let old = Dictionary(uniqueKeysWithValues: monitors.map { ($0.displayID, $0) })
+        let focusedDisplayID = monitors.isEmpty ? 0 : focusedMonitor.displayID
+        rebuildMonitors()
+
+        for monitor in monitors {
+            if let existing = old[monitor.displayID] {
+                monitor.workspaces = existing.workspaces
+                monitor.layouts = existing.layouts
+                monitor.active = existing.active
+            }
+        }
+
+        let currentIDs = Set(monitors.map { $0.displayID })
+        for (id, oldMonitor) in old where !currentIDs.contains(id) {
+            let target = monitors[0]
+            for ws in oldMonitor.workspaces {
+                for window in ws {
+                    target.workspaces[target.active].insert(window, at: 0)
+                }
+            }
+        }
+
+        focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == focusedDisplayID }) ?? 0
+
+        for monitor in monitors {
+            monitor.retile()
+        }
+        StatusBar.shared.update()
     }
 
     package func restoreAllWindows() {
-        let screen = WindowManager.screenFrame()
-        let center = CGPoint(
-            x: screen.origin.x + screen.width / 4,
-            y: screen.origin.y + screen.height / 4
-        )
-        let size = CGSize(width: screen.width / 2, height: screen.height / 2)
+        for monitor in monitors {
+            monitor.restoreAllWindows()
+        }
+    }
 
-        for ws in workspaces {
-            for win in ws {
-                win.setPosition(center)
-                win.setSize(size)
+    private func rebuildMonitors() {
+        monitors = NSScreen.screens
+            .map { screen in
+                Monitor(
+                    displayID: WindowManager.displayID(for: screen),
+                    screen: screen
+                )
+            }
+            .sorted { $0.screen.frame.origin.x < $1.screen.frame.origin.x }
+    }
+
+    private func monitorForWindow(_ window: TrackedWindow) -> Monitor {
+        guard monitors.count > 1, let frame = window.getFrame() else {
+            return monitors[0]
+        }
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        for monitor in monitors {
+            let rect = WindowManager.screenRect(for: monitor.screen)
+            if rect.contains(center) {
+                return monitor
             }
         }
+        return monitors[0]
     }
 }
