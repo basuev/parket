@@ -60,6 +60,8 @@ command = "open -n -a Safari"
 
 custom bindings always include the modifier key (option by default). prefix with `shift+` to add shift to the combo.
 
+to reload config at runtime, use the "Reload Config" option in the menubar menu.
+
 ## requirements
 
 - macOS 14+, Apple Silicon
