@@ -78,6 +78,18 @@ package final class Hotkeys {
             return nil
         }
 
+        if keyCode == Key.comma || keyCode == Key.period {
+            let offset = keyCode == Key.comma ? -1 : 1
+            DispatchQueue.main.async {
+                if hasShift {
+                    WorkspaceManager.shared.moveWindowToMonitor(offset: offset)
+                } else {
+                    WorkspaceManager.shared.focusMonitor(offset: offset)
+                }
+            }
+            return nil
+        }
+
         guard !hasShift else { return Unmanaged.passRetained(event) }
 
         switch keyCode {
