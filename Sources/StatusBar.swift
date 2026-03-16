@@ -10,12 +10,20 @@ package final class StatusBar: NSObject {
         super.init()
 
         let menu = NSMenu()
+        let reloadItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "r")
+        reloadItem.target = self
+        menu.addItem(reloadItem)
+        menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
         statusItem.menu = menu
 
         update()
+    }
+
+    @objc private func reloadConfig() {
+        WorkspaceManager.shared.reloadConfig()
     }
 
     @objc private func quit() {

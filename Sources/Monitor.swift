@@ -126,6 +126,27 @@ package final class Monitor {
         return screen
     }
 
+    package func resizeWorkspaces(to count: Int) {
+        let old = workspaces.count
+        guard count != old else { return }
+
+        if count > old {
+            workspaces.append(contentsOf: Array(repeating: [], count: count - old))
+            layouts.append(contentsOf: Array(repeating: .tile, count: count - old))
+        } else {
+            let overflow = workspaces[count..<old].joined()
+            workspaces.removeSubrange(count...)
+            layouts.removeSubrange(count...)
+            if active >= count {
+                active = count - 1
+            }
+            if previousActive >= count {
+                previousActive = active
+            }
+            workspaces[active].append(contentsOf: overflow)
+        }
+    }
+
     func restoreAllWindows() {
         let screen = WindowManager.screenFrame(for: self.screen)
         let center = CGPoint(

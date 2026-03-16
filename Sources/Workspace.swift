@@ -142,6 +142,17 @@ package final class WorkspaceManager {
         StatusBar.shared.update()
     }
 
+    package func reloadConfig() {
+        Config.load()
+        let count = Config.shared.workspaceCount
+        for monitor in monitors {
+            monitor.resizeWorkspaces(to: count)
+            monitor.retile()
+        }
+        StatusBar.shared.update()
+        fputs("tatami: config reloaded\n", stderr)
+    }
+
     package func restoreAllWindows() {
         for monitor in monitors {
             monitor.restoreAllWindows()
