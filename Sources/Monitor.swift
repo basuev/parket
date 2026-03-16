@@ -7,6 +7,7 @@ package final class Monitor {
     var layouts: [Layout] = Array(repeating: .tile, count: Config.shared.workspaceCount)
     var active: Int = 0
     var previousActive: Int = 0
+    private var retileScheduled = false
 
     init(displayID: CGDirectDisplayID, screen: NSScreen) {
         self.displayID = displayID
@@ -19,11 +20,14 @@ package final class Monitor {
         let previous = active
         previousActive = previous
         active = index
-        let screen = retile()
+
+        let screen = WindowManager.screenFrame(for: self.screen)
 
         for win in workspaces[previous] {
             win.hideInCorner(screen)
         }
+
+        retile()
 
         if let master = workspaces[active].first {
             master.focus()
@@ -53,7 +57,7 @@ package final class Monitor {
 
     func addWindow(_ window: TrackedWindow) {
         insertWindow(window)
-        retile()
+        scheduleRetile()
     }
 
     @discardableResult
@@ -74,7 +78,7 @@ package final class Monitor {
                 needsRetile = needsRetile || (i == active)
             }
         }
-        if changed && needsRetile { retile() }
+        if changed && needsRetile { scheduleRetile() }
         return changed
     }
 
@@ -115,6 +119,15 @@ package final class Monitor {
         if layouts[active] == .monocle, let focused = WindowManager.focusedWindow(),
            workspaces[active].contains(focused) {
             focused.raise()
+        }
+    }
+
+    private func scheduleRetile() {
+        guard !retileScheduled else { return }
+        retileScheduled = true
+        DispatchQueue.main.async { [self] in
+            retileScheduled = false
+            retile()
         }
     }
 
