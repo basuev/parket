@@ -3,7 +3,7 @@ BUNDLE = $(APP_NAME).app
 INSTALL_DIR = /Applications/$(BUNDLE)
 BUILD_DIR = .build/release
 
-.PHONY: build test check install clean dist
+.PHONY: build test check install clean dist benchmark
 
 build:
 	swift build --product tatami -c release
@@ -37,6 +37,9 @@ dist: build
 clean:
 	swift package clean
 	rm -rf $(BUNDLE) $(APP_NAME).zip
+
+benchmark:
+	bash scripts/benchmark.sh run
 
 uninstall:
 	rm -rf $(INSTALL_DIR)
