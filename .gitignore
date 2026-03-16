@@ -3,3 +3,4 @@ tatami.app/
 *.zip
 .DS_Store
 mmwm.app/
+benchmark-*.csv
