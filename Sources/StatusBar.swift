@@ -28,15 +28,28 @@ package final class StatusBar: NSObject {
         let font = NSFont.menuBarFont(ofSize: 0)
         let fontSize = font.pointSize
 
-        let layout = ws.layouts[ws.active]
+        guard !ws.monitors.isEmpty else {
+            views.append(BadgeView(number: 1, fontSize: fontSize, active: true))
+            applyViews(views)
+            return
+        }
+
+        let monitor = ws.focusedMonitor
+
+        if ws.monitors.count > 1 {
+            let monitorNumber = ws.focusedMonitorIndex + 1
+            views.append(LayoutIndicatorView(text: "\(monitorNumber):", fontSize: fontSize))
+        }
+
+        let layout = monitor.layouts[monitor.active]
         if layout == .monocle {
-            let windowCount = ws.workspaces[ws.active].count
+            let windowCount = monitor.workspaces[monitor.active].count
             views.append(LayoutIndicatorView(text: "M\(windowCount)", fontSize: fontSize))
         }
 
         for i in 0..<Config.workspaceCount {
-            let isActive = i == ws.active
-            let hasWindows = !ws.workspaces[i].isEmpty
+            let isActive = i == monitor.active
+            let hasWindows = !monitor.workspaces[i].isEmpty
 
             guard isActive || hasWindows else { continue }
 
@@ -47,6 +60,10 @@ package final class StatusBar: NSObject {
             views.append(BadgeView(number: 1, fontSize: fontSize, active: true))
         }
 
+        applyViews(views)
+    }
+
+    private func applyViews(_ views: [NSView]) {
         let stack = NSStackView(views: views)
         stack.spacing = 4
         stack.edgeInsets = NSEdgeInsets(top: 0, left: 4, bottom: 0, right: 4)
