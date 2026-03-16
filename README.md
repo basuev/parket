@@ -126,6 +126,18 @@ make uninstall
 
 tatami is not trying to compete with these projects. it exists for those who want the absolute minimum: a single layout, a few keybindings, zero dependencies, and code small enough to read in one sitting.
 
+## resource usage
+
+tatami is designed to stay out of your way. here is how it compares to AeroSpace under identical conditions (Apple Silicon, macOS 26, 6 tiled windows, continuous open/close workload):
+
+- **2x less memory** - 41 MB vs 83 MB
+- **near-zero CPU** - 0.0% even during active window management, vs 2% for AeroSpace
+- **40x fewer context switches** - less work for the kernel, less energy spent
+
+fewer threads, fewer wakeups, longer battery life. you won't find tatami in Activity Monitor unless you go looking for it.
+
+<sub>measured with `scripts/benchmark.sh`. run it yourself - numbers are reproducible.</sub>
+
 ## license
 
 MIT
