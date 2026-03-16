@@ -4,11 +4,6 @@ import ApplicationServices
 package final class Hotkeys {
     package static let shared = Hotkeys()
 
-    private static let numberKeys: [UInt16: Int] = [
-        18: 1, 19: 2, 20: 3, 21: 4, 23: 5,
-        22: 6, 26: 7, 28: 8, 25: 9
-    ]
-
     private var tap: CFMachPort?
 
     private init() {}
@@ -45,7 +40,8 @@ package final class Hotkeys {
         let flags = event.flags
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
-        let hasModifier = flags.contains(Config.modifier)
+        let config = Config.shared
+        let hasModifier = flags.contains(config.modifier)
         let hasShift = flags.contains(.maskShift)
         let hasCmd = flags.contains(.maskCommand)
         let hasCtrl = flags.contains(.maskControl)
@@ -54,7 +50,7 @@ package final class Hotkeys {
             return Unmanaged.passRetained(event)
         }
 
-        for binding in Config.customBindings {
+        for binding in config.customBindings {
             guard binding.key == keyCode, binding.shift == hasShift else { continue }
             let cmd = binding.command
             DispatchQueue.global(qos: .userInitiated).async {
@@ -66,7 +62,7 @@ package final class Hotkeys {
             return nil
         }
 
-        if let number = numberKeys[keyCode] {
+        if let number = config.numberKeys[keyCode] {
             let index = number - 1
             DispatchQueue.main.async {
                 if hasShift {
@@ -78,40 +74,45 @@ package final class Hotkeys {
             return nil
         }
 
-        if keyCode == Key.comma || keyCode == Key.period {
-            let offset = keyCode == Key.comma ? -1 : 1
-            DispatchQueue.main.async {
-                if hasShift {
-                    WorkspaceManager.shared.moveWindowToMonitor(offset: offset)
-                } else {
-                    WorkspaceManager.shared.focusMonitor(offset: offset)
-                }
-            }
+        let b = config.bindings
+
+        if keyCode == b.focusMonitorPrev.key && hasShift == b.focusMonitorPrev.shift {
+            DispatchQueue.main.async { WorkspaceManager.shared.focusMonitor(offset: -1) }
             return nil
         }
-
-        if keyCode == Key.tab, !hasShift {
+        if keyCode == b.focusMonitorNext.key && hasShift == b.focusMonitorNext.shift {
+            DispatchQueue.main.async { WorkspaceManager.shared.focusMonitor(offset: 1) }
+            return nil
+        }
+        if keyCode == b.moveMonitorPrev.key && hasShift == b.moveMonitorPrev.shift {
+            DispatchQueue.main.async { WorkspaceManager.shared.moveWindowToMonitor(offset: -1) }
+            return nil
+        }
+        if keyCode == b.moveMonitorNext.key && hasShift == b.moveMonitorNext.shift {
+            DispatchQueue.main.async { WorkspaceManager.shared.moveWindowToMonitor(offset: 1) }
+            return nil
+        }
+        if keyCode == b.lastWorkspace.key && hasShift == b.lastWorkspace.shift {
             DispatchQueue.main.async { WorkspaceManager.shared.switchToLast() }
             return nil
         }
-
-        guard !hasShift else { return Unmanaged.passRetained(event) }
-
-        switch keyCode {
-        case 38:
+        if keyCode == b.focusNext.key && hasShift == b.focusNext.shift {
             DispatchQueue.main.async { WorkspaceManager.shared.focusNext() }
             return nil
-        case 40:
+        }
+        if keyCode == b.focusPrev.key && hasShift == b.focusPrev.shift {
             DispatchQueue.main.async { WorkspaceManager.shared.focusPrev() }
             return nil
-        case 36:
+        }
+        if keyCode == b.swapMaster.key && hasShift == b.swapMaster.shift {
             DispatchQueue.main.async { WorkspaceManager.shared.swapMaster() }
             return nil
-        case 46:
+        }
+        if keyCode == b.toggleLayout.key && hasShift == b.toggleLayout.shift {
             DispatchQueue.main.async { WorkspaceManager.shared.toggleLayout() }
             return nil
-        default:
-            return Unmanaged.passRetained(event)
         }
+
+        return Unmanaged.passRetained(event)
     }
 }
