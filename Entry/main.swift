@@ -35,6 +35,7 @@ guard checkAccessibility() else {
     exit(1)
 }
 
+Config.load()
 setupCrashSafety()
 
 let statusBar = StatusBar.shared

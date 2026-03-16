@@ -8,7 +8,6 @@ let package = Package(
         .target(
             name: "TatamiCore",
             path: "Sources",
-            exclude: ["Config.def.swift"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),

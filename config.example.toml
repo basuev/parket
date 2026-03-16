@@ -1,0 +1,32 @@
+# tatami configuration
+# copy to ~/.config/tatami/config.toml
+
+# number of workspaces (1-9)
+# workspace_count = 9
+
+# master window width ratio (0.0-1.0)
+# master_ratio = 0.55
+
+# global modifier key: "option", "control", "command"
+# modifier = "option"
+
+# built-in action bindings
+# key names: a-z, 0-9, return, tab, space, escape, delete,
+#   comma, period, slash, backslash, minus, equal, grave,
+#   leftbracket, rightbracket, semicolon, quote
+# prefix with shift+ for shift modifier
+# [bindings]
+# focus_next = "j"
+# focus_prev = "k"
+# swap_master = "return"
+# toggle_layout = "m"
+# focus_monitor_prev = "comma"
+# focus_monitor_next = "period"
+# move_monitor_prev = "shift+comma"
+# move_monitor_next = "shift+period"
+# last_workspace = "tab"
+
+# custom key bindings that run shell commands
+# [[custom]]
+# key = "shift+return"
+# command = "open -n -a Terminal"

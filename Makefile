@@ -6,11 +6,9 @@ BUILD_DIR = .build/release
 .PHONY: build test check install clean dist
 
 build:
-	@test -f Sources/Config.swift || cp Sources/Config.def.swift Sources/Config.swift
 	swift build --product tatami -c release
 
 test:
-	@test -f Sources/Config.swift || cp Sources/Config.def.swift Sources/Config.swift
 	swift build --product tatami-tests
 	.build/debug/tatami-tests
 
