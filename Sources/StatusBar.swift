@@ -4,6 +4,7 @@ package final class StatusBar: NSObject {
     package static let shared = StatusBar()
 
     private let statusItem: NSStatusItem
+    private var lastState: StatusState?
 
     private override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -32,6 +33,10 @@ package final class StatusBar: NSObject {
 
     func update() {
         let ws = WorkspaceManager.shared
+        let state = StatusState.capture(ws)
+        guard state != lastState else { return }
+        lastState = state
+
         var views: [NSView] = []
         let font = NSFont.menuBarFont(ofSize: 0)
         let fontSize = font.pointSize
@@ -141,6 +146,34 @@ private final class BadgeView: NSView {
         }
 
         drawCenteredText("\(number)", in: bounds, fontSize: fontSize, color: .black, ctx: ctx)
+    }
+}
+
+private struct StatusState: Equatable {
+    let monitorCount: Int
+    let focusedMonitorIndex: Int
+    let activeWorkspace: Int
+    let activeLayout: Layout
+    let occupiedWorkspaces: [Bool]
+    let activeWindowCount: Int
+
+    static func capture(_ ws: WorkspaceManager) -> StatusState {
+        guard !ws.monitors.isEmpty else {
+            return StatusState(
+                monitorCount: 0, focusedMonitorIndex: 0, activeWorkspace: 0,
+                activeLayout: .tile, occupiedWorkspaces: [], activeWindowCount: 0
+            )
+        }
+        let monitor = ws.focusedMonitor
+        let occupied = (0..<Config.shared.workspaceCount).map { !monitor.workspaces[$0].isEmpty }
+        return StatusState(
+            monitorCount: ws.monitors.count,
+            focusedMonitorIndex: ws.focusedMonitorIndex,
+            activeWorkspace: monitor.active,
+            activeLayout: monitor.layouts[monitor.active],
+            occupiedWorkspaces: occupied,
+            activeWindowCount: monitor.workspaces[monitor.active].count
+        )
     }
 }
 
