@@ -22,6 +22,7 @@ swift, zero dependencies.
 | `Option + Shift + 1-9` | move focused window to workspace |
 | `Option + J/K` | focus next/prev window |
 | `Option + Return` | swap focused window with master |
+| `Option + Tab` | switch to last active workspace |
 | `Option + M` | toggle monocle layout |
 | `Option + ,` / `Option + .` | focus prev/next monitor |
 | `Option + Shift + ,` / `Option + Shift + .` | move window to prev/next monitor |
