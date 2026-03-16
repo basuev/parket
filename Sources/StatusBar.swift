@@ -96,7 +96,11 @@ package final class StatusBar: NSObject {
     }
 }
 
-private let badgeColor = NSColor(red: 26/255, green: 34/255, blue: 37/255, alpha: 1)
+private let badgeColor = NSColor(name: nil) { appearance in
+    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        ? NSColor(red: 230/255, green: 230/255, blue: 235/255, alpha: 1)
+        : NSColor(red: 26/255, green: 34/255, blue: 37/255, alpha: 1)
+}
 
 private func drawCenteredText(_ text: String, in bounds: NSRect, fontSize: CGFloat, color: NSColor, ctx: CGContext) {
     let font = NSFont.systemFont(ofSize: fontSize - 1)
@@ -132,20 +136,20 @@ private final class BadgeView: NSView {
         let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
 
+        ctx.addPath(path)
+        let textColor: NSColor
         if active {
-            ctx.addPath(path)
             ctx.setFillColor(badgeColor.cgColor)
             ctx.fillPath()
             ctx.setBlendMode(.destinationOut)
+            textColor = .black
         } else {
-            ctx.addPath(path)
             ctx.setStrokeColor(badgeColor.cgColor)
             ctx.setLineWidth(1)
             ctx.strokePath()
-            ctx.setFillColor(badgeColor.cgColor)
+            textColor = badgeColor
         }
-
-        drawCenteredText("\(number)", in: bounds, fontSize: fontSize, color: .black, ctx: ctx)
+        drawCenteredText("\(number)", in: bounds, fontSize: fontSize, color: textColor, ctx: ctx)
     }
 }
 
