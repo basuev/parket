@@ -86,9 +86,7 @@ package final class WorkspaceManager {
         guard monitors.count > 1 else { return }
         focusedMonitorIndex = (focusedMonitorIndex + offset + monitors.count) % monitors.count
         let target = focusedMonitor
-        if let master = target.workspaces[target.active].first {
-            master.focus()
-        }
+        target.restoreFocusedWindow()
         StatusBar.shared.update()
     }
 
@@ -119,6 +117,7 @@ package final class WorkspaceManager {
             if let existing = old[monitor.displayID] {
                 monitor.workspaces = existing.workspaces
                 monitor.layouts = existing.layouts
+                monitor.focusedIndices = existing.focusedIndices
                 monitor.active = existing.active
                 monitor.previousActive = existing.previousActive
             }

@@ -5,6 +5,7 @@ package final class Monitor {
     var screen: NSScreen
     var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.shared.workspaceCount)
     var layouts: [Layout] = Array(repeating: .tile, count: Config.shared.workspaceCount)
+    var focusedIndices: [Int] = Array(repeating: 0, count: Config.shared.workspaceCount)
     var active: Int = 0
     var previousActive: Int = 0
     private var retileScheduled = false
@@ -19,6 +20,7 @@ package final class Monitor {
 
         let previous = active
         previousActive = previous
+        saveFocusedIndex()
         active = index
 
         let screen = WindowManager.screenRect(for: self.screen)
@@ -27,10 +29,7 @@ package final class Monitor {
         }
 
         retile()
-
-        if let master = workspaces[active].first {
-            master.focus()
-        }
+        restoreFocusedWindow()
     }
 
     func moveActiveWindowTo(_ index: Int) {
@@ -94,8 +93,10 @@ package final class Monitor {
               let focused = WindowManager.focusedWindow(),
               let i = windows.firstIndex(of: focused)
         else { return }
-        let target = windows[(i + offset + windows.count) % windows.count]
+        let targetIndex = (i + offset + windows.count) % windows.count
+        let target = windows[targetIndex]
         target.focus()
+        focusedIndices[active] = targetIndex
         if layouts[active] == .monocle {
             target.raise()
         }
@@ -145,10 +146,12 @@ package final class Monitor {
         if count > old {
             workspaces.append(contentsOf: Array(repeating: [], count: count - old))
             layouts.append(contentsOf: Array(repeating: .tile, count: count - old))
+            focusedIndices.append(contentsOf: Array(repeating: 0, count: count - old))
         } else {
             let overflow = workspaces[count..<old].joined()
             workspaces.removeSubrange(count...)
             layouts.removeSubrange(count...)
+            focusedIndices.removeSubrange(count...)
             if active >= count {
                 active = count - 1
             }
@@ -156,6 +159,24 @@ package final class Monitor {
                 previousActive = active
             }
             workspaces[active].append(contentsOf: overflow)
+        }
+    }
+
+    private func saveFocusedIndex() {
+        guard let focused = WindowManager.focusedWindow(),
+              let i = workspaces[active].firstIndex(of: focused)
+        else { return }
+        focusedIndices[active] = i
+    }
+
+    func restoreFocusedWindow() {
+        let windows = workspaces[active]
+        guard !windows.isEmpty else { return }
+        let idx = min(focusedIndices[active], windows.count - 1)
+        let target = windows[idx]
+        target.focus()
+        if layouts[active] == .monocle {
+            target.raise()
         }
     }
 
