@@ -3,8 +3,8 @@ import AppKit
 package final class Monitor {
     let displayID: CGDirectDisplayID
     var screen: NSScreen
-    var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.workspaceCount)
-    var layouts: [Layout] = Array(repeating: .tile, count: Config.workspaceCount)
+    var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.shared.workspaceCount)
+    var layouts: [Layout] = Array(repeating: .tile, count: Config.shared.workspaceCount)
     var active: Int = 0
     var previousActive: Int = 0
 
@@ -14,7 +14,7 @@ package final class Monitor {
     }
 
     func switchTo(_ index: Int) {
-        guard index >= 0, index < Config.workspaceCount, index != active else { return }
+        guard index >= 0, index < Config.shared.workspaceCount, index != active else { return }
 
         let previous = active
         previousActive = previous
@@ -31,7 +31,7 @@ package final class Monitor {
     }
 
     func moveActiveWindowTo(_ index: Int) {
-        guard index >= 0, index < Config.workspaceCount, index != active else { return }
+        guard index >= 0, index < Config.shared.workspaceCount, index != active else { return }
         guard let focused = WindowManager.focusedWindow() else { return }
 
         guard let i = workspaces[active].firstIndex(of: focused) else { return }
@@ -66,7 +66,7 @@ package final class Monitor {
     func removeWindows(where predicate: (TrackedWindow) -> Bool) -> Bool {
         var needsRetile = false
         var changed = false
-        for i in 0..<Config.workspaceCount {
+        for i in 0..<Config.shared.workspaceCount {
             let before = workspaces[i].count
             workspaces[i].removeAll(where: predicate)
             if workspaces[i].count != before {

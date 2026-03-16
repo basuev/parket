@@ -28,7 +28,7 @@ package enum Tiler {
 
         var result: [CGRect] = []
         result.reserveCapacity(count)
-        let masterWidth = floor(screen.width * Config.masterRatio)
+        let masterWidth = floor(screen.width * Config.shared.masterRatio)
         result.append(CGRect(
             x: screen.origin.x, y: screen.origin.y,
             width: masterWidth, height: screen.height

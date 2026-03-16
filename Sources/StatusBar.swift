@@ -47,7 +47,7 @@ package final class StatusBar: NSObject {
             views.append(LayoutIndicatorView(text: "M\(windowCount)", fontSize: fontSize))
         }
 
-        for i in 0..<Config.workspaceCount {
+        for i in 0..<Config.shared.workspaceCount {
             let isActive = i == monitor.active
             let hasWindows = !monitor.workspaces[i].isEmpty
 

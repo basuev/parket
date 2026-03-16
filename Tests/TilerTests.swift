@@ -30,7 +30,7 @@ enum TilerTests {
 
         do {
             let frames = Tiler.calculateFrames(count: 2, screen: screen, layout: .tile)
-            let masterWidth = floor(1920 * Config.masterRatio)
+            let masterWidth = floor(1920 * Config.shared.masterRatio)
             check(frames.count == 2, "two windows count")
             check(frames[0].width == masterWidth, "master width")
             check(frames[1].width == 1920 - masterWidth, "stack width")
@@ -68,7 +68,7 @@ enum TilerTests {
             let frames = Tiler.calculateFrames(count: 2, screen: offset, layout: .tile)
             check(frames[0].origin.x == 100, "offset master x")
             check(frames[0].origin.y == 50, "offset master y")
-            check(frames[1].origin.x == 100 + floor(1920 * Config.masterRatio), "offset stack x")
+            check(frames[1].origin.x == 100 + floor(1920 * Config.shared.masterRatio), "offset stack x")
             check(frames[1].origin.y == 50, "offset stack y")
         }
 
