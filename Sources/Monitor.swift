@@ -21,10 +21,9 @@ package final class Monitor {
         previousActive = previous
         active = index
 
-        let screen = WindowManager.screenFrame(for: self.screen)
-
+        let screen = WindowManager.screenRect(for: self.screen)
         for win in workspaces[previous] {
-            win.hideInCorner(screen)
+            win.hideOffscreen(screen)
         }
 
         retile()
@@ -42,8 +41,8 @@ package final class Monitor {
         workspaces[active].remove(at: i)
         workspaces[index].insert(focused, at: 0)
 
-        let screen = retile()
-        focused.hideInCorner(screen)
+        retile()
+        focused.hideOffscreen(WindowManager.screenRect(for: self.screen))
 
         if let next = workspaces[active].first {
             next.focus()

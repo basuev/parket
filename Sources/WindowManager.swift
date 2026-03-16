@@ -35,10 +35,8 @@ struct TrackedWindow: Equatable {
         AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value)
     }
 
-    func hideInCorner(_ screen: CGRect) {
-        let x = screen.origin.x - 5000
-        let y = screen.origin.y + screen.height + 5000
-        setPosition(CGPoint(x: x, y: y))
+    func hideOffscreen(_ screen: CGRect) {
+        setPosition(CGPoint(x: screen.origin.x + 1 - screen.width, y: screen.maxY - 1))
     }
 
     func setFrame(_ rect: CGRect) {
