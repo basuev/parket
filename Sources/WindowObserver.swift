@@ -66,6 +66,7 @@ package final class WindowObserver {
             let tw = TrackedWindow(element: win, pid: pid)
             guard tw.isTileable() else { continue }
             WorkspaceManager.shared.addWindow(tw)
+            observeWindowDestruction(element: win, pid: pid)
             added = true
         }
 
@@ -97,13 +98,27 @@ package final class WindowObserver {
             var pidValue: pid_t = 0
             AXUIElementGetPid(element, &pidValue)
             WindowObserver.shared.tryAdoptWindow(element: element, pid: pidValue, attempt: 0)
+        } else if notif == kAXUIElementDestroyedNotification {
+            var pidValue: pid_t = 0
+            AXUIElementGetPid(element, &pidValue)
+            if let obs = WindowObserver.shared.observers[pidValue] {
+                AXObserverRemoveNotification(obs, element, kAXUIElementDestroyedNotification as CFString)
+            }
+            let tw = TrackedWindow(element: element, pid: pidValue)
+            WorkspaceManager.shared.removeWindow(tw)
         }
+    }
+
+    private func observeWindowDestruction(element: AXUIElement, pid: pid_t) {
+        guard let obs = observers[pid] else { return }
+        AXObserverAddNotification(obs, element, kAXUIElementDestroyedNotification as CFString, nil)
     }
 
     private func tryAdoptWindow(element: AXUIElement, pid: pid_t, attempt: Int) {
         let tw = TrackedWindow(element: element, pid: pid)
         if tw.isTileable() {
             WorkspaceManager.shared.addWindow(tw)
+            observeWindowDestruction(element: element, pid: pid)
         } else if attempt < Self.maxRetries {
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.retryInterval) {
                 self.tryAdoptWindow(element: element, pid: pid, attempt: attempt + 1)
