@@ -111,16 +111,13 @@ package final class WorkspaceManager {
 
     package func handleScreenChange() {
         let old = Dictionary(uniqueKeysWithValues: monitors.map { ($0.displayID, $0) })
+        let oldPrimaryID = primaryDisplayID()
         let focusedDisplayID = monitors.isEmpty ? 0 : focusedMonitor.displayID
         rebuildMonitors()
 
         for monitor in monitors {
             if let existing = old[monitor.displayID] {
-                monitor.workspaces = existing.workspaces
-                monitor.layouts = existing.layouts
-                monitor.focusedIndices = existing.focusedIndices
-                monitor.active = existing.active
-                monitor.previousActive = existing.previousActive
+                monitor.copyState(from: existing)
             }
         }
 
@@ -134,7 +131,21 @@ package final class WorkspaceManager {
             }
         }
 
-        focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == focusedDisplayID }) ?? 0
+        let newPrimaryID = primaryDisplayID()
+
+        if newPrimaryID != oldPrimaryID,
+           let newPrimary = monitors.first(where: { $0.displayID == newPrimaryID }),
+           let oldPrimary = monitors.first(where: { $0.displayID == oldPrimaryID }),
+           newPrimary.workspaces.allSatisfy({ $0.isEmpty }) {
+            newPrimary.copyState(from: oldPrimary)
+            oldPrimary.resetState()
+        }
+
+        if newPrimaryID != oldPrimaryID {
+            focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == newPrimaryID }) ?? 0
+        } else {
+            focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == focusedDisplayID }) ?? 0
+        }
 
         for monitor in monitors {
             monitor.retile()
@@ -168,6 +179,11 @@ package final class WorkspaceManager {
                 )
             }
             .sorted { $0.screen.frame.origin.x < $1.screen.frame.origin.x }
+    }
+
+    private func primaryDisplayID() -> CGDirectDisplayID {
+        guard !monitors.isEmpty else { return 0 }
+        return monitors.first(where: { $0.screen == NSScreen.main })?.displayID ?? monitors[0].displayID
     }
 
     private func monitorForWindow(_ window: TrackedWindow) -> Monitor {

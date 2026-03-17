@@ -162,11 +162,28 @@ package final class Monitor {
         }
     }
 
-    private func saveFocusedIndex() {
+    func saveFocusedIndex() {
         guard let focused = WindowManager.focusedWindow(),
               let i = workspaces[active].firstIndex(of: focused)
         else { return }
         focusedIndices[active] = i
+    }
+
+    func copyState(from source: Monitor) {
+        workspaces = source.workspaces
+        layouts = source.layouts
+        focusedIndices = source.focusedIndices
+        active = source.active
+        previousActive = source.previousActive
+    }
+
+    func resetState() {
+        let count = Config.shared.workspaceCount
+        workspaces = Array(repeating: [], count: count)
+        layouts = Array(repeating: .tile, count: count)
+        focusedIndices = Array(repeating: 0, count: count)
+        active = 0
+        previousActive = 0
     }
 
     func restoreFocusedWindow() {
