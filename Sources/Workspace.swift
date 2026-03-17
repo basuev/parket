@@ -84,6 +84,7 @@ package final class WorkspaceManager {
 
     func focusMonitor(offset: Int) {
         guard monitors.count > 1 else { return }
+        focusedMonitor.saveFocusedIndex()
         focusedMonitorIndex = (focusedMonitorIndex + offset + monitors.count) % monitors.count
         let target = focusedMonitor
         target.restoreFocusedWindow()
