@@ -43,10 +43,12 @@ package final class Hotkeys {
         let config = Config.shared
         let hasModifier = flags.contains(config.modifier)
         let hasShift = flags.contains(.maskShift)
-        let hasCmd = flags.contains(.maskCommand)
-        let hasCtrl = flags.contains(.maskControl)
+        let hasExtraModifiers =
+            (config.modifier != .maskCommand && flags.contains(.maskCommand)) ||
+            (config.modifier != .maskControl && flags.contains(.maskControl)) ||
+            (config.modifier != .maskAlternate && flags.contains(.maskAlternate))
 
-        guard hasModifier, !hasCmd, !hasCtrl else {
+        guard hasModifier, !hasExtraModifiers else {
             return Unmanaged.passRetained(event)
         }
 
