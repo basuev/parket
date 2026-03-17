@@ -18,12 +18,12 @@ install: build
 	@if [ ! -d "$(INSTALL_DIR)" ]; then \
 		mkdir -p $(INSTALL_DIR)/Contents/MacOS; \
 		cp Info.plist $(INSTALL_DIR)/Contents/; \
-		codesign --force --sign - $(INSTALL_DIR); \
-		echo "Fresh install to $(INSTALL_DIR)"; \
-		echo "Grant Accessibility permission in System Settings, then: open /Applications/$(APP_NAME).app"; \
+		echo "fresh install to $(INSTALL_DIR)"; \
+		echo "grant accessibility permission in system settings, then: open /Applications/$(APP_NAME).app"; \
 	fi
 	cp $(BUILD_DIR)/$(APP_NAME) $(INSTALL_DIR)/Contents/MacOS/
-	@echo "Updated $(INSTALL_DIR)"
+	codesign --force --sign - $(INSTALL_DIR)
+	@echo "updated $(INSTALL_DIR)"
 
 dist: build
 	rm -rf $(BUNDLE)
