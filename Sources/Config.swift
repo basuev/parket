@@ -126,13 +126,13 @@ package struct Config {
     }
 
     package static func load() {
-        let path = NSString("~/.config/tatami/config.toml").expandingTildeInPath
+        let path = NSString("~/.config/parket/config.toml").expandingTildeInPath
         guard FileManager.default.fileExists(atPath: path) else { return }
 
         guard let data = FileManager.default.contents(atPath: path),
               let text = String(data: data, encoding: .utf8)
         else {
-            fputs("tatami: failed to read config file\n", stderr)
+            fputs("parket: failed to read config file\n", stderr)
             return
         }
 
@@ -140,7 +140,7 @@ package struct Config {
         do {
             toml = try Toml.parse(text)
         } catch {
-            fputs("tatami: config parse error: \(error)\n", stderr)
+            fputs("parket: config parse error: \(error)\n", stderr)
             return
         }
 
@@ -160,7 +160,7 @@ package struct Config {
             case "option": config.modifier = .maskAlternate
             case "control": config.modifier = .maskControl
             case "command": config.modifier = .maskCommand
-            default: fputs("tatami: unknown modifier '\(mod)', using option\n", stderr)
+            default: fputs("parket: unknown modifier '\(mod)', using option\n", stderr)
             }
         }
 
@@ -183,7 +183,7 @@ package struct Config {
                 else { return nil }
                 let (keyCode, shift) = parseKeyString(keyStr)
                 guard let code = keyCode else {
-                    fputs("tatami: unknown key '\(keyStr)' in custom binding\n", stderr)
+                    fputs("parket: unknown key '\(keyStr)' in custom binding\n", stderr)
                     return nil
                 }
                 return Binding(key: code, shift: shift, command: command)
@@ -208,7 +208,7 @@ package struct Config {
         guard let value = dict[name] as? String else { return }
         let (keyCode, shift) = parseKeyString(value)
         guard let code = keyCode else {
-            fputs("tatami: unknown key '\(value)' for binding '\(name)'\n", stderr)
+            fputs("parket: unknown key '\(value)' for binding '\(name)'\n", stderr)
             return
         }
         binding = (code, shift)

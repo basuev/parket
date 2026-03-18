@@ -161,7 +161,7 @@ package final class WorkspaceManager {
             monitor.retile()
         }
         StatusBar.shared.update()
-        fputs("tatami: config reloaded\n", stderr)
+        fputs("parket: config reloaded\n", stderr)
     }
 
     package func restoreAllWindows() {

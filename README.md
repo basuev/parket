@@ -1,4 +1,4 @@
-# tatami
+# parket
 
 minimal tiling window manager for macOS. emulates workspaces by moving windows offscreen - no private API, no SIP modifications. inspired by [dwm](https://dwm.suckless.org/) and [AeroSpace](https://github.com/nikitabobko/AeroSpace).
 
@@ -31,7 +31,7 @@ all keybindings are configurable - see configuration below.
 
 ## configuration
 
-edit `~/.config/tatami/config.toml`. all fields are optional - defaults are used for anything not specified.
+edit `~/.config/parket/config.toml`. all fields are optional - defaults are used for anything not specified.
 
 ```toml
 workspace_count = 9
@@ -71,15 +71,15 @@ to reload config at runtime, use the "Reload Config" option in the menubar menu.
 ## install
 
 ```bash
-brew tap basuev/tatami
-brew install --cask tatami
+brew tap basuev/parket
+brew install --cask parket
 ```
 
 or build from source:
 
 ```bash
 make install
-open /Applications/tatami.app
+open /Applications/parket.app
 ```
 
 grant permissions in system settings -> privacy & security when prompted, then relaunch.
@@ -87,7 +87,7 @@ grant permissions in system settings -> privacy & security when prompted, then r
 ## update
 
 ```bash
-brew upgrade --cask tatami
+brew upgrade --cask parket
 ```
 
 or from source:
@@ -101,7 +101,7 @@ replaces only the binary - permissions persist.
 ## uninstall
 
 ```bash
-brew uninstall --cask tatami
+brew uninstall --cask parket
 ```
 
 or:
@@ -112,7 +112,7 @@ make uninstall
 
 ## comparison
 
-|  | tatami | [AeroSpace](https://github.com/nikitabobko/AeroSpace) | [yabai](https://github.com/koekeishiya/yabai) | [Amethyst](https://github.com/ianyh/Amethyst) |
+|  | parket | [AeroSpace](https://github.com/nikitabobko/AeroSpace) | [yabai](https://github.com/koekeishiya/yabai) | [Amethyst](https://github.com/ianyh/Amethyst) |
 |--|--------|-----------|-------|----------|
 | language | swift | swift | c / obj-c | swift |
 | dependencies | 0 | 4 | 1 (skhd) | 1+ |
@@ -124,17 +124,17 @@ make uninstall
 | layouts | master-stack, monocle | tree (i3) | bsp | 14+ |
 | lines of code | ~1k | ~15k | ~20k | ~15k |
 
-tatami is not trying to compete with these projects. it exists for those who want the absolute minimum: a single layout, a few keybindings, zero dependencies, and code small enough to read in one sitting.
+parket is not trying to compete with these projects. it exists for those who want the absolute minimum: a single layout, a few keybindings, zero dependencies, and code small enough to read in one sitting.
 
 ## resource usage
 
-tatami is designed to stay out of your way. here is how it compares to AeroSpace under identical conditions (Apple Silicon, macOS 26, 6 tiled windows, continuous open/close workload):
+parket is designed to stay out of your way. here is how it compares to AeroSpace under identical conditions (Apple Silicon, macOS 26, 6 tiled windows, continuous open/close workload):
 
 - **2x less memory** - 41 MB vs 83 MB
 - **near-zero CPU** - 0.0% even during active window management, vs 2% for AeroSpace
 - **40x fewer context switches** - less work for the kernel, less energy spent
 
-fewer threads, fewer wakeups, longer battery life. you won't find tatami in Activity Monitor unless you go looking for it.
+fewer threads, fewer wakeups, longer battery life. you won't find parket in Activity Monitor unless you go looking for it.
 
 <sub>measured with `scripts/benchmark.sh`. run it yourself - numbers are reproducible.</sub>
 

@@ -1,8 +1,7 @@
 .build/
-tatami.app/
+parket.app/
 *.zip
 .DS_Store
 CLAUDE.md
 AGENTS.md
-mmwm.app/
 benchmark-*.csv

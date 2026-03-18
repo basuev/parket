@@ -17,20 +17,20 @@ die() { echo "error: $1" >&2; exit 1; }
 warn() { echo "warning: $1" >&2; }
 
 detect_wm() {
-    local tatami_pid aerospace_pid
-    tatami_pid=$(pgrep -x tatami 2>/dev/null || true)
+    local parket_pid aerospace_pid
+    parket_pid=$(pgrep -x parket 2>/dev/null || true)
     aerospace_pid=$(pgrep -x AeroSpace 2>/dev/null || true)
 
-    if [[ -n "$tatami_pid" && -n "$aerospace_pid" ]]; then
-        die "both tatami and aerospace are running. stop one first"
+    if [[ -n "$parket_pid" && -n "$aerospace_pid" ]]; then
+        die "both parket and aerospace are running. stop one first"
     fi
-    if [[ -z "$tatami_pid" && -z "$aerospace_pid" ]]; then
-        die "neither tatami nor aerospace is running"
+    if [[ -z "$parket_pid" && -z "$aerospace_pid" ]]; then
+        die "neither parket nor aerospace is running"
     fi
 
-    if [[ -n "$tatami_pid" ]]; then
-        WM_NAME="tatami"
-        WM_PID="$tatami_pid"
+    if [[ -n "$parket_pid" ]]; then
+        WM_NAME="parket"
+        WM_PID="$parket_pid"
     else
         WM_NAME="aerospace"
         WM_PID="$aerospace_pid"
