@@ -6,6 +6,7 @@ package final class WorkspaceManager {
 
     private(set) var monitors: [Monitor] = []
     private(set) var focusedMonitorIndex: Int = 0
+    private var screenChangeWork: DispatchWorkItem?
 
     var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
 
@@ -110,6 +111,16 @@ package final class WorkspaceManager {
     }
 
     package func handleScreenChange() {
+        screenChangeWork?.cancel()
+        let work = DispatchWorkItem { [self] in
+            performScreenChange()
+        }
+        screenChangeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    private func performScreenChange() {
+        screenChangeWork = nil
         let old = Dictionary(uniqueKeysWithValues: monitors.map { ($0.displayID, $0) })
         let oldPrimaryID = primaryDisplayID()
         let focusedDisplayID = monitors.isEmpty ? 0 : focusedMonitor.displayID
