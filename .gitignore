@@ -1,5 +1,6 @@
 .build/
 parket.app/
+tatami.app/
 *.zip
 .DS_Store
 CLAUDE.md
