@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "tatami",
+    name: "parket",
     platforms: [.macOS(.v14)],
     targets: [
         .target(
-            name: "TatamiCore",
+            name: "ParketCore",
             path: "Sources",
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -15,13 +15,13 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "tatami",
-            dependencies: ["TatamiCore"],
+            name: "parket",
+            dependencies: ["ParketCore"],
             path: "Entry"
         ),
         .executableTarget(
-            name: "tatami-tests",
-            dependencies: ["TatamiCore"],
+            name: "parket-tests",
+            dependencies: ["ParketCore"],
             path: "Tests"
         ),
     ]

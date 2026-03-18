@@ -1,6 +1,5 @@
 .build/
-tatami.app/
+parket.app/
 *.zip
 .DS_Store
-mmwm.app/
 benchmark-*.csv

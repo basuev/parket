@@ -1,5 +1,5 @@
-# tatami configuration
-# copy to ~/.config/tatami/config.toml
+# parket configuration
+# copy to ~/.config/parket/config.toml
 
 # number of workspaces (1-9)
 # workspace_count = 9

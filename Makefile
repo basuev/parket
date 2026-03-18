@@ -1,4 +1,4 @@
-APP_NAME = tatami
+APP_NAME = parket
 BUNDLE = $(APP_NAME).app
 INSTALL_DIR = /Applications/$(BUNDLE)
 BUILD_DIR = .build/release
@@ -6,11 +6,11 @@ BUILD_DIR = .build/release
 .PHONY: build test check install clean dist benchmark
 
 build:
-	swift build --product tatami -c release
+	swift build --product parket -c release
 
 test:
-	swift build --product tatami-tests
-	.build/debug/tatami-tests
+	swift build --product parket-tests
+	.build/debug/parket-tests
 
 check: test build
 
