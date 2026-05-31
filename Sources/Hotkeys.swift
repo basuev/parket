@@ -41,6 +41,10 @@ package final class Hotkeys {
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
 
         let config = Config.shared
+        if config.modifier == .maskCommand && keyCode == Key.tab && flags.contains(.maskCommand) {
+            return Unmanaged.passRetained(event)
+        }
+
         let hasModifier = flags.contains(config.modifier)
         let hasShift = flags.contains(.maskShift)
         let hasExtraModifiers =

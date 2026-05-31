@@ -40,9 +40,12 @@ grant permissions in system settings -> privacy & security when prompted, then r
 - **menubar indicator** - badge widgets show active workspace and occupied ones
 - **custom keybindings** - bind any key combo to shell commands via toml config
 - **multi-monitor** - per-display workspaces, each monitor has its own workspace set
+- **app switcher follow** - command+tab to a hidden workspace window opens that workspace
 - **crash safety** - all windows restore on exit
 
 ## keybindings
+
+macOS command+tab stays the system app switcher. when it selects a window on another parket workspace, parket opens that workspace and focuses the selected window.
 
 | key | action |
 |-----|--------|

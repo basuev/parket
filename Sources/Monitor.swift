@@ -39,6 +39,32 @@ package final class Monitor {
         restoreFocusedWindow()
     }
 
+    func revealWorkspace(_ index: Int, focusing focused: TrackedWindow) {
+        guard index >= 0, index < Config.shared.workspaceCount else { return }
+
+        if index != active {
+            let previous = active
+            previousActive = previous
+            saveFocusedIndex()
+            active = index
+
+            let screen = WindowManager.screenRect(for: self.screen)
+            for win in workspaces[previous] {
+                win.hideOffscreen(screen)
+            }
+        }
+
+        guard rememberFocusedWindow(focused) else { return }
+        retile()
+        guard rememberFocusedWindow(focused) else { return }
+
+        let target = workspaces[active][focusedIndices[active]]
+        target.focus()
+        if layouts[active] == .monocle {
+            target.raise()
+        }
+    }
+
     func moveActiveWindowTo(_ index: Int) {
         guard index >= 0, index < Config.shared.workspaceCount, index != active else { return }
         guard let focused = WindowManager.focusedWindow() else { return }
@@ -210,10 +236,16 @@ package final class Monitor {
 
     func saveFocusedIndex() {
         guard let focused = WindowManager.focusedWindow(),
-              let i = workspaces[active].firstIndex(of: focused)
+              rememberFocusedWindow(focused)
         else { return }
+    }
+
+    @discardableResult
+    func rememberFocusedWindow(_ focused: TrackedWindow) -> Bool {
+        guard let i = workspaces[active].firstIndex(of: focused) else { return false }
         workspaces[active][i] = focused.keepingMembers(from: workspaces[active][i])
         focusedIndices[active] = i
+        return true
     }
 
     func copyState(from source: Monitor) {

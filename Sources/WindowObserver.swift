@@ -34,6 +34,16 @@ package final class WindowObserver {
             WindowObserver.shared.observers.removeValue(forKey: pid)
         }
 
+        nc.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil, queue: .main
+        ) { note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.activationPolicy == .regular
+            else { return }
+            WorkspaceManager.shared.followExternalFocus(pid: app.processIdentifier)
+        }
+
         for app in NSWorkspace.shared.runningApplications {
             guard app.activationPolicy == .regular else { continue }
             let pid = app.processIdentifier
@@ -76,6 +86,8 @@ package final class WindowObserver {
 
         let appRef = AXUIElementCreateApplication(pid)
         AXObserverAddNotification(obs, appRef, kAXWindowCreatedNotification as CFString, nil)
+        AXObserverAddNotification(obs, appRef, kAXFocusedWindowChangedNotification as CFString, nil)
+        AXObserverAddNotification(obs, appRef, kAXFocusedUIElementChangedNotification as CFString, nil)
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
 
         observers[pid] = obs
@@ -96,6 +108,10 @@ package final class WindowObserver {
             }
             let windows = WindowManager.windows(pid: pidValue) ?? []
             WorkspaceManager.shared.syncWindows(pid: pidValue, windows: windows)
+        } else if notif == kAXFocusedWindowChangedNotification || notif == kAXFocusedUIElementChangedNotification {
+            var pidValue: pid_t = 0
+            AXUIElementGetPid(element, &pidValue)
+            WorkspaceManager.shared.followExternalFocus(pid: pidValue)
         }
     }
 

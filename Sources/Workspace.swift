@@ -4,9 +4,19 @@ import AppKit
 package final class WorkspaceManager {
     package static let shared = WorkspaceManager()
 
+    private struct WindowLocation {
+        let monitorIndex: Int
+        let workspaceIndex: Int
+        let windowIndex: Int
+    }
+
+    private static let focusFollowRetryDelay: TimeInterval = 0.015
+    private static let focusFollowMaxAttempts = 5
+
     private(set) var monitors: [Monitor] = []
     private(set) var focusedMonitorIndex: Int = 0
     private var screenChangeWork: DispatchWorkItem?
+    private var focusFollowWork: DispatchWorkItem?
 
     var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
 
@@ -139,6 +149,73 @@ package final class WorkspaceManager {
         StatusBar.shared.update()
     }
 
+    func followExternalFocus(pid: pid_t) {
+        if Thread.isMainThread {
+            startExternalFocus(pid: pid)
+        } else {
+            DispatchQueue.main.async {
+                self.startExternalFocus(pid: pid)
+            }
+        }
+    }
+
+    private func startExternalFocus(pid: pid_t) {
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
+        focusFollowWork?.cancel()
+        performExternalFocus(pid: pid, attempt: 0)
+    }
+
+    private func scheduleExternalFocus(pid: pid_t, attempt: Int) {
+        focusFollowWork?.cancel()
+        let work = DispatchWorkItem { [self] in
+            performExternalFocus(pid: pid, attempt: attempt)
+        }
+        focusFollowWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.focusFollowRetryDelay, execute: work)
+    }
+
+    private func performExternalFocus(pid: pid_t, attempt: Int) {
+        focusFollowWork = nil
+        guard !monitors.isEmpty,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+        else { return }
+
+        if let focused = WindowManager.focusedWindow(pid: pid),
+           let location = locateWindow(focused) {
+            revealExternalFocus(focused, at: location)
+            return
+        }
+
+        if let fallback = singleTrackedWindow(pid: pid) {
+            revealExternalFocus(fallback.window, at: fallback.location)
+            return
+        }
+
+        retryExternalFocus(pid: pid, attempt: attempt)
+    }
+
+    private func revealExternalFocus(_ window: TrackedWindow, at location: WindowLocation) {
+        let monitor = monitors[location.monitorIndex]
+        if monitor.active == location.workspaceIndex {
+            focusedMonitorIndex = location.monitorIndex
+            if monitor.workspaces[monitor.active].indices.contains(location.windowIndex) {
+                monitor.focusedIndices[monitor.active] = location.windowIndex
+            }
+            monitor.rememberFocusedWindow(window)
+            StatusBar.shared.update()
+            return
+        }
+
+        focusedMonitorIndex = location.monitorIndex
+        monitor.revealWorkspace(location.workspaceIndex, focusing: window)
+        StatusBar.shared.update()
+    }
+
+    private func retryExternalFocus(pid: pid_t, attempt: Int) {
+        guard attempt < Self.focusFollowMaxAttempts else { return }
+        scheduleExternalFocus(pid: pid, attempt: attempt + 1)
+    }
+
     package func handleScreenChange() {
         screenChangeWork?.cancel()
         let work = DispatchWorkItem { [self] in
@@ -224,6 +301,48 @@ package final class WorkspaceManager {
     private func primaryDisplayID() -> CGDirectDisplayID {
         guard !monitors.isEmpty else { return 0 }
         return monitors.first(where: { $0.screen == NSScreen.main })?.displayID ?? monitors[0].displayID
+    }
+
+    private func locateWindow(_ window: TrackedWindow) -> WindowLocation? {
+        for monitorIndex in monitors.indices {
+            let monitor = monitors[monitorIndex]
+            for workspaceIndex in monitor.workspaces.indices {
+                if let windowIndex = monitor.workspaces[workspaceIndex].firstIndex(of: window) {
+                    return WindowLocation(
+                        monitorIndex: monitorIndex,
+                        workspaceIndex: workspaceIndex,
+                        windowIndex: windowIndex
+                    )
+                }
+            }
+        }
+        return nil
+    }
+
+    private func singleTrackedWindow(pid: pid_t) -> (window: TrackedWindow, location: WindowLocation)? {
+        var result: (window: TrackedWindow, location: WindowLocation)?
+
+        for monitorIndex in monitors.indices {
+            let monitor = monitors[monitorIndex]
+            for workspaceIndex in monitor.workspaces.indices {
+                for windowIndex in monitor.workspaces[workspaceIndex].indices {
+                    let window = monitor.workspaces[workspaceIndex][windowIndex]
+                    guard window.pid == pid, window.isTileable() else { continue }
+
+                    guard result == nil else { return nil }
+                    result = (
+                        window,
+                        WindowLocation(
+                            monitorIndex: monitorIndex,
+                            workspaceIndex: workspaceIndex,
+                            windowIndex: windowIndex
+                        )
+                    )
+                }
+            }
+        }
+
+        return result
     }
 
     private func monitorForWindow(_ window: TrackedWindow) -> Monitor {
