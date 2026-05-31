@@ -8,6 +8,10 @@ enum WindowUpdate {
 }
 
 package final class Monitor {
+    private static let geometryDebounceDelay: TimeInterval = 0.08
+    private static let geometrySuppressionDelay: TimeInterval = 0.20
+    private static let frameTolerance: CGFloat = 2.0
+
     let displayID: CGDirectDisplayID
     var screen: NSScreen
     var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.shared.workspaceCount)
@@ -16,6 +20,8 @@ package final class Monitor {
     var active: Int = 0
     var previousActive: Int = 0
     private var retileScheduled = false
+    private var geometryRetileWork: DispatchWorkItem?
+    private var ignoreGeometryUntil: TimeInterval = 0
 
     init(displayID: CGDirectDisplayID, screen: NSScreen) {
         self.displayID = displayID
@@ -194,10 +200,28 @@ package final class Monitor {
         }
     }
 
+    func scheduleCorrectiveRetile() {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now >= ignoreGeometryUntil else { return }
+
+        geometryRetileWork?.cancel()
+        let scheduledActive = active
+        let work = DispatchWorkItem { [self] in
+            geometryRetileWork = nil
+            guard active == scheduledActive else { return }
+            guard ProcessInfo.processInfo.systemUptime >= ignoreGeometryUntil else { return }
+            guard !activeWorkspaceMatchesLayout(tolerance: Self.frameTolerance) else { return }
+            retile()
+        }
+        geometryRetileWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.geometryDebounceDelay, execute: work)
+    }
+
     @discardableResult
     func retile() -> CGRect {
         cleanActiveWorkspace()
         let screen = WindowManager.screenFrame(for: self.screen)
+        ignoreGeometryUntil = ProcessInfo.processInfo.systemUptime + Self.geometrySuppressionDelay
         Tiler.tile(windows: workspaces[active], screen: screen, layout: layouts[active])
         return screen
     }
@@ -209,6 +233,27 @@ package final class Monitor {
             windows.append(window)
         }
         workspaces[active] = windows
+    }
+
+    private func activeWorkspaceMatchesLayout(tolerance: CGFloat) -> Bool {
+        let windows = workspaces[active]
+        let screen = WindowManager.screenFrame(for: self.screen)
+        let frames = Tiler.calculateFrames(count: windows.count, screen: screen, layout: layouts[active])
+        guard frames.count == windows.count else { return false }
+
+        for i in windows.indices {
+            guard windows[i].isTileable(), let frame = windows[i].getFrame() else { return false }
+            guard framesMatch(frame, frames[i], tolerance: tolerance) else { return false }
+        }
+
+        return true
+    }
+
+    private func framesMatch(_ lhs: CGRect, _ rhs: CGRect, tolerance: CGFloat) -> Bool {
+        abs(lhs.origin.x - rhs.origin.x) <= tolerance
+            && abs(lhs.origin.y - rhs.origin.y) <= tolerance
+            && abs(lhs.width - rhs.width) <= tolerance
+            && abs(lhs.height - rhs.height) <= tolerance
     }
 
     package func resizeWorkspaces(to count: Int) {
@@ -257,6 +302,9 @@ package final class Monitor {
     }
 
     func resetState() {
+        geometryRetileWork?.cancel()
+        geometryRetileWork = nil
+        ignoreGeometryUntil = 0
         let count = Config.shared.workspaceCount
         workspaces = Array(repeating: [], count: count)
         layouts = Array(repeating: .tile, count: count)

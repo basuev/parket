@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ApplicationServices
 
 package final class WorkspaceManager {
     package static let shared = WorkspaceManager()
@@ -159,6 +160,23 @@ package final class WorkspaceManager {
         }
     }
 
+    func handleWindowGeometryChange(pid: pid_t, element: AXUIElement) {
+        if Thread.isMainThread {
+            performWindowGeometryChange(pid: pid, element: element)
+        } else {
+            DispatchQueue.main.async {
+                self.performWindowGeometryChange(pid: pid, element: element)
+            }
+        }
+    }
+
+    private func performWindowGeometryChange(pid: pid_t, element: AXUIElement) {
+        guard let location = locateWindow(pid: pid, element: element) else { return }
+        let monitor = monitors[location.monitorIndex]
+        guard monitor.active == location.workspaceIndex else { return }
+        monitor.scheduleCorrectiveRetile()
+    }
+
     private func startExternalFocus(pid: pid_t) {
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
         focusFollowWork?.cancel()
@@ -308,6 +326,24 @@ package final class WorkspaceManager {
             let monitor = monitors[monitorIndex]
             for workspaceIndex in monitor.workspaces.indices {
                 if let windowIndex = monitor.workspaces[workspaceIndex].firstIndex(of: window) {
+                    return WindowLocation(
+                        monitorIndex: monitorIndex,
+                        workspaceIndex: workspaceIndex,
+                        windowIndex: windowIndex
+                    )
+                }
+            }
+        }
+        return nil
+    }
+
+    private func locateWindow(pid: pid_t, element: AXUIElement) -> WindowLocation? {
+        for monitorIndex in monitors.indices {
+            let monitor = monitors[monitorIndex]
+            for workspaceIndex in monitor.workspaces.indices {
+                for windowIndex in monitor.workspaces[workspaceIndex].indices {
+                    let window = monitor.workspaces[workspaceIndex][windowIndex]
+                    guard window.pid == pid, window.containsElement(element) else { continue }
                     return WindowLocation(
                         monitorIndex: monitorIndex,
                         workspaceIndex: workspaceIndex,

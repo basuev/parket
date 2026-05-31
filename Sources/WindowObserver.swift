@@ -49,7 +49,7 @@ package final class WindowObserver {
             let pid = app.processIdentifier
             observeApp(pid: pid)
             if let windows = WindowManager.windows(pid: pid) {
-                observeWindowDestruction(windows: windows, pid: pid)
+                observeWindows(windows, pid: pid)
             }
         }
     }
@@ -67,7 +67,7 @@ package final class WindowObserver {
         }
 
         WorkspaceManager.shared.syncWindows(pid: pid, windows: windows)
-        observeWindowDestruction(windows: windows, pid: pid)
+        observeWindows(windows, pid: pid)
     }
 
     private func retrySyncWindows(pid: pid_t, attempt: Int) {
@@ -104,7 +104,13 @@ package final class WindowObserver {
             var pidValue: pid_t = 0
             AXUIElementGetPid(element, &pidValue)
             if let obs = WindowObserver.shared.observers[pidValue] {
-                AXObserverRemoveNotification(obs, element, kAXUIElementDestroyedNotification as CFString)
+                for name in [
+                    kAXUIElementDestroyedNotification,
+                    kAXMovedNotification,
+                    kAXResizedNotification,
+                ] {
+                    AXObserverRemoveNotification(obs, element, name as CFString)
+                }
             }
             let windows = WindowManager.windows(pid: pidValue) ?? []
             WorkspaceManager.shared.syncWindows(pid: pidValue, windows: windows)
@@ -112,18 +118,24 @@ package final class WindowObserver {
             var pidValue: pid_t = 0
             AXUIElementGetPid(element, &pidValue)
             WorkspaceManager.shared.followExternalFocus(pid: pidValue)
+        } else if notif == kAXMovedNotification || notif == kAXResizedNotification {
+            var pidValue: pid_t = 0
+            AXUIElementGetPid(element, &pidValue)
+            WorkspaceManager.shared.handleWindowGeometryChange(pid: pidValue, element: element)
         }
     }
 
-    private func observeWindowDestruction(element: AXUIElement, pid: pid_t) {
+    private func observeWindow(element: AXUIElement, pid: pid_t) {
         guard let obs = observers[pid] else { return }
         AXObserverAddNotification(obs, element, kAXUIElementDestroyedNotification as CFString, nil)
+        AXObserverAddNotification(obs, element, kAXMovedNotification as CFString, nil)
+        AXObserverAddNotification(obs, element, kAXResizedNotification as CFString, nil)
     }
 
-    private func observeWindowDestruction(windows: [TrackedWindow], pid: pid_t) {
+    private func observeWindows(_ windows: [TrackedWindow], pid: pid_t) {
         for window in windows {
             for member in window.members {
-                observeWindowDestruction(element: member, pid: pid)
+                observeWindow(element: member, pid: pid)
             }
         }
     }

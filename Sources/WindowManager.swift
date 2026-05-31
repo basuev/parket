@@ -66,6 +66,10 @@ struct TrackedWindow: Equatable {
             && members.allSatisfy { member in other.members.contains { CFEqual(member, $0) } }
     }
 
+    func containsElement(_ element: AXUIElement) -> Bool {
+        references.contains { CFEqual($0, element) }
+    }
+
     func getFrame() -> CGRect? {
         WindowManager.frame(of: element)
     }
