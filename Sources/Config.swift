@@ -107,17 +107,26 @@ package struct BuiltinBindings {
 }
 
 package struct Config {
+    package static let defaultWorkspaceCount = 9
+    package static let defaultMasterRatio: CGFloat = 0.55
+    @MainActor
     package static var shared = Config()
+    package static var path: String {
+        NSString("~/.config/parket/config.toml").expandingTildeInPath
+    }
+    package static var url: URL {
+        URL(fileURLWithPath: path)
+    }
 
-    package var workspaceCount: Int = 9
-    package var masterRatio: CGFloat = 0.55
+    package var workspaceCount: Int = defaultWorkspaceCount
+    package var masterRatio: CGFloat = defaultMasterRatio
     package var modifier: CGEventFlags = .maskAlternate
     package var customBindings: [Binding] = [
-        Binding(key: Key.return, shift: true, command: "open -n -a Terminal"),
+        Binding(key: Key.return, shift: true, command: "open -n -a Terminal")
     ]
     package var bindings = BuiltinBindings()
 
-    package private(set) var numberKeys: [UInt16: Int] = buildNumberKeys(count: 9)
+    package private(set) var numberKeys: [UInt16: Int] = buildNumberKeys(count: defaultWorkspaceCount)
 
     private static func buildNumberKeys(count: Int) -> [UInt16: Int] {
         var map: [UInt16: Int] = [:]
@@ -125,33 +134,38 @@ package struct Config {
         return map
     }
 
+    @MainActor
     package static func load() {
-        let path = NSString("~/.config/parket/config.toml").expandingTildeInPath
         guard FileManager.default.fileExists(atPath: path) else { return }
 
         guard let data = FileManager.default.contents(atPath: path),
-              let text = String(data: data, encoding: .utf8)
+            let text = String(data: data, encoding: .utf8)
         else {
             fputs("parket: failed to read config file\n", stderr)
             return
         }
 
+        guard let config = parse(text, report: { fputs("parket: \($0)\n", stderr) }) else { return }
+        shared = config
+    }
+
+    package static func parse(_ text: String, report: (String) -> Void = { _ in }) -> Config? {
         let toml: [String: Any]
         do {
             toml = try Toml.parse(text)
         } catch {
-            fputs("parket: config parse error: \(error)\n", stderr)
-            return
+            report("config parse error: \(error)")
+            return nil
         }
 
         var config = Config()
 
-        if let count = toml["workspace_count"] as? Int, count >= 1, count <= 9 {
+        if let count = toml["workspace_count"] as? Int, WorkspaceBounds.isValidCount(count) {
             config.workspaceCount = count
             config.numberKeys = buildNumberKeys(count: count)
         }
 
-        if let ratio = toml["master_ratio"] as? Double {
+        if let ratio = toml["master_ratio"] as? Double, ratio > 0, ratio < 1 {
             config.masterRatio = CGFloat(ratio)
         }
 
@@ -160,37 +174,50 @@ package struct Config {
             case "option": config.modifier = .maskAlternate
             case "control": config.modifier = .maskControl
             case "command": config.modifier = .maskCommand
-            default: fputs("parket: unknown modifier '\(mod)', using option\n", stderr)
+            default: report("unknown modifier '\(mod)', using option")
             }
         }
 
         if let bindings = toml["bindings"] as? [String: Any] {
-            applyBinding(bindings, "focus_next", to: &config.bindings.focusNext)
-            applyBinding(bindings, "focus_prev", to: &config.bindings.focusPrev)
-            applyBinding(bindings, "swap_master", to: &config.bindings.swapMaster)
-            applyBinding(bindings, "toggle_layout", to: &config.bindings.toggleLayout)
-            applyBinding(bindings, "focus_monitor_prev", to: &config.bindings.focusMonitorPrev)
-            applyBinding(bindings, "focus_monitor_next", to: &config.bindings.focusMonitorNext)
-            applyBinding(bindings, "move_monitor_prev", to: &config.bindings.moveMonitorPrev)
-            applyBinding(bindings, "move_monitor_next", to: &config.bindings.moveMonitorNext)
-            applyBinding(bindings, "last_workspace", to: &config.bindings.lastWorkspace)
+            applyBinding(bindings, "focus_next", to: &config.bindings.focusNext, report: report)
+            applyBinding(bindings, "focus_prev", to: &config.bindings.focusPrev, report: report)
+            applyBinding(bindings, "swap_master", to: &config.bindings.swapMaster, report: report)
+            applyBinding(bindings, "toggle_layout", to: &config.bindings.toggleLayout, report: report)
+            applyBinding(bindings, "focus_monitor_prev", to: &config.bindings.focusMonitorPrev, report: report)
+            applyBinding(bindings, "focus_monitor_next", to: &config.bindings.focusMonitorNext, report: report)
+            applyBinding(bindings, "move_monitor_prev", to: &config.bindings.moveMonitorPrev, report: report)
+            applyBinding(bindings, "move_monitor_next", to: &config.bindings.moveMonitorNext, report: report)
+            applyBinding(bindings, "last_workspace", to: &config.bindings.lastWorkspace, report: report)
         }
 
         if let customs = toml["custom"] as? [[String: Any]] {
             config.customBindings = customs.compactMap { entry in
                 guard let keyStr = entry["key"] as? String,
-                      let command = entry["command"] as? String
+                    let command = entry["command"] as? String
                 else { return nil }
                 let (keyCode, shift) = parseKeyString(keyStr)
                 guard let code = keyCode else {
-                    fputs("parket: unknown key '\(keyStr)' in custom binding\n", stderr)
+                    report("unknown key '\(keyStr)' in custom binding")
                     return nil
                 }
                 return Binding(key: code, shift: shift, command: command)
             }
         }
 
-        shared = config
+        return config
+    }
+
+    @MainActor
+    package static func openConfig() {
+        let manager = FileManager.default
+        let directory = url.deletingLastPathComponent()
+        if !manager.fileExists(atPath: directory.path) {
+            try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        if !manager.fileExists(atPath: path) {
+            try? defaultConfigText.write(to: url, atomically: true, encoding: .utf8)
+        }
+        NSWorkspace.shared.open(url)
     }
 
     private static func parseKeyString(_ s: String) -> (key: UInt16?, shift: Bool) {
@@ -203,14 +230,38 @@ package struct Config {
 
     private static func applyBinding(
         _ dict: [String: Any], _ name: String,
-        to binding: inout (key: UInt16, shift: Bool)
+        to binding: inout (key: UInt16, shift: Bool),
+        report: (String) -> Void
     ) {
         guard let value = dict[name] as? String else { return }
         let (keyCode, shift) = parseKeyString(value)
         guard let code = keyCode else {
-            fputs("parket: unknown key '\(value)' for binding '\(name)'\n", stderr)
+            report("unknown key '\(value)' for binding '\(name)'")
             return
         }
         binding = (code, shift)
+    }
+
+    private static var defaultConfigText: String {
+        """
+        workspace_count = 9
+        master_ratio = 0.55
+        modifier = "option"
+
+        [bindings]
+        focus_next = "j"
+        focus_prev = "k"
+        swap_master = "return"
+        toggle_layout = "m"
+        focus_monitor_prev = "comma"
+        focus_monitor_next = "period"
+        move_monitor_prev = "shift+comma"
+        move_monitor_next = "shift+period"
+        last_workspace = "tab"
+
+        [[custom]]
+        key = "shift+return"
+        command = "open -n -a Terminal"
+        """
     }
 }

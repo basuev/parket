@@ -1,7 +1,8 @@
-import Foundation
 import AppKit
 import ApplicationServices
+import Foundation
 
+@MainActor
 package final class WorkspaceManager {
     package static let shared = WorkspaceManager()
 
@@ -16,6 +17,7 @@ package final class WorkspaceManager {
 
     private(set) var monitors: [Monitor] = []
     private(set) var focusedMonitorIndex: Int = 0
+    package private(set) var isTilingPaused = false
     private var screenChangeWork: DispatchWorkItem?
     private var focusFollowWork: DispatchWorkItem?
 
@@ -30,13 +32,16 @@ package final class WorkspaceManager {
         for window in windows {
             monitorForWindow(window).insertWindow(window)
         }
-        for monitor in monitors {
-            monitor.retile()
+        if !isTilingPaused {
+            for monitor in monitors {
+                monitor.retile()
+            }
         }
         StatusBar.shared.update()
     }
 
     func switchTo(_ index: Int) {
+        guard !isTilingPaused else { return }
         focusedMonitor.switchTo(index)
         StatusBar.shared.update()
     }
@@ -48,6 +53,7 @@ package final class WorkspaceManager {
     }
 
     func moveActiveWindowTo(_ index: Int) {
+        guard !isTilingPaused else { return }
         focusedMonitor.moveActiveWindowTo(index)
         StatusBar.shared.update()
     }
@@ -113,10 +119,12 @@ package final class WorkspaceManager {
     }
 
     func swapMaster() {
+        guard !isTilingPaused else { return }
         focusedMonitor.swapMaster()
     }
 
     func toggleLayout() {
+        guard !isTilingPaused else { return }
         focusedMonitor.toggleLayout()
         StatusBar.shared.update()
     }
@@ -131,6 +139,7 @@ package final class WorkspaceManager {
     }
 
     func moveWindowToMonitor(offset: Int) {
+        guard !isTilingPaused else { return }
         guard monitors.count > 1 else { return }
         guard let focused = WindowManager.focusedWindow() else { return }
 
@@ -171,6 +180,7 @@ package final class WorkspaceManager {
     }
 
     private func performWindowGeometryChange(pid: pid_t, element: AXUIElement) {
+        guard !isTilingPaused else { return }
         guard let location = locateWindow(pid: pid, element: element) else { return }
         let monitor = monitors[location.monitorIndex]
         guard monitor.active == location.workspaceIndex else { return }
@@ -178,6 +188,7 @@ package final class WorkspaceManager {
     }
 
     private func startExternalFocus(pid: pid_t) {
+        guard !isTilingPaused else { return }
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
         focusFollowWork?.cancel()
         performExternalFocus(pid: pid, attempt: 0)
@@ -194,12 +205,14 @@ package final class WorkspaceManager {
 
     private func performExternalFocus(pid: pid_t, attempt: Int) {
         focusFollowWork = nil
-        guard !monitors.isEmpty,
-              NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+        guard !isTilingPaused,
+            !monitors.isEmpty,
+            NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
         else { return }
 
         if let focused = WindowManager.focusedWindow(pid: pid),
-           let location = locateWindow(focused) {
+            let location = locateWindow(focused)
+        {
             revealExternalFocus(focused, at: location)
             return
         }
@@ -269,9 +282,10 @@ package final class WorkspaceManager {
         let newPrimaryID = primaryDisplayID()
 
         if newPrimaryID != oldPrimaryID,
-           let newPrimary = monitors.first(where: { $0.displayID == newPrimaryID }),
-           let oldPrimary = monitors.first(where: { $0.displayID == oldPrimaryID }),
-           newPrimary.workspaces.allSatisfy({ $0.isEmpty }) {
+            let newPrimary = monitors.first(where: { $0.displayID == newPrimaryID }),
+            let oldPrimary = monitors.first(where: { $0.displayID == oldPrimaryID }),
+            newPrimary.workspaces.allSatisfy({ $0.isEmpty })
+        {
             newPrimary.copyState(from: oldPrimary)
             oldPrimary.resetState()
         }
@@ -293,10 +307,41 @@ package final class WorkspaceManager {
         let count = Config.shared.workspaceCount
         for monitor in monitors {
             monitor.resizeWorkspaces(to: count)
-            monitor.retile()
+            if !isTilingPaused {
+                monitor.retile()
+            }
         }
         StatusBar.shared.update()
         fputs("parket: config reloaded\n", stderr)
+    }
+
+    package func setTilingPaused(_ paused: Bool) {
+        guard isTilingPaused != paused else { return }
+        isTilingPaused = paused
+        if paused {
+            for monitor in monitors {
+                monitor.cancelPendingRetile()
+            }
+        } else {
+            retileNow()
+        }
+        StatusBar.shared.update()
+    }
+
+    package func toggleTilingPaused() {
+        setTilingPaused(!isTilingPaused)
+    }
+
+    package func retileNow() {
+        for monitor in monitors {
+            monitor.retile(force: true)
+        }
+        StatusBar.shared.update()
+    }
+
+    package func pauseTilingAndRestoreAllWindows() {
+        setTilingPaused(true)
+        restoreAllWindows()
     }
 
     package func restoreAllWindows() {

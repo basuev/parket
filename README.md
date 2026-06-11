@@ -24,7 +24,7 @@ make install
 open /Applications/parket.app
 ```
 
-grant permissions in system settings -> privacy & security when prompted, then relaunch.
+parket opens a permission window on first launch. grant Accessibility and Input Monitoring, then use Recheck Permissions from the window or menubar.
 
 ## requirements
 
@@ -42,6 +42,8 @@ grant permissions in system settings -> privacy & security when prompted, then r
 - **multi-monitor** - per-display workspaces, each monitor has its own workspace set
 - **app switcher follow** - command+tab to a hidden workspace window opens that workspace
 - **crash safety** - all windows restore on exit
+- **permission onboarding** - menubar and permission window show Accessibility and Input Monitoring state
+- **escape hatches** - pause tiling, retile now, restore all windows, open config, copy diagnostics
 
 ## keybindings
 
@@ -92,6 +94,8 @@ command = "open -n -a Safari"
 custom bindings always include the modifier key (option by default). prefix with `shift+` to add shift to the combo.
 
 to reload config at runtime, use the "Reload Config" option in the menubar menu.
+
+the menubar menu also includes "Pause Tiling", "Retile Now", "Restore All Windows", "Open Config", and "Copy Diagnostic Report". "Restore All Windows" pauses tiling first, then brings tracked windows back onscreen.
 
 ## update
 

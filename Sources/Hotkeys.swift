@@ -1,35 +1,58 @@
-import Cocoa
 import ApplicationServices
+import Cocoa
 
+private struct HotkeyCallbackEvent: @unchecked Sendable {
+    let value: CGEvent
+}
+
+private struct HotkeyCallbackResult: @unchecked Sendable {
+    let value: Unmanaged<CGEvent>?
+}
+
+@MainActor
 package final class Hotkeys {
     package static let shared = Hotkeys()
 
     private var tap: CFMachPort?
+    package var isRunning: Bool { tap != nil }
 
     private init() {}
 
-    package func start() {
+    package func start() -> Bool {
+        guard tap == nil else { return true }
+
         let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: Hotkeys.callback,
-            userInfo: nil
-        ) else {
+        guard
+            let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: mask,
+                callback: Hotkeys.callback,
+                userInfo: nil
+            )
+        else {
             fputs("parket: failed to create event tap (check Input Monitoring permission)\n", stderr)
-            exit(1)
+            return false
         }
 
         self.tap = tap
         let source = CFMachPortCreateRunLoopSource(nil, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        return true
     }
 
     private static let callback: CGEventTapCallBack = { _, type, event, _ in
+        let callbackEvent = HotkeyCallbackEvent(value: event)
+        let result: HotkeyCallbackResult = MainActor.assumeIsolated {
+            HotkeyCallbackResult(value: handle(type: type, event: callbackEvent.value))
+        }
+        return result.value
+    }
+
+    private static func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap = Hotkeys.shared.tap {
                 CGEvent.tapEnable(tap: tap, enable: true)
@@ -48,9 +71,9 @@ package final class Hotkeys {
         let hasModifier = flags.contains(config.modifier)
         let hasShift = flags.contains(.maskShift)
         let hasExtraModifiers =
-            (config.modifier != .maskCommand && flags.contains(.maskCommand)) ||
-            (config.modifier != .maskControl && flags.contains(.maskControl)) ||
-            (config.modifier != .maskAlternate && flags.contains(.maskAlternate))
+            (config.modifier != .maskCommand && flags.contains(.maskCommand))
+            || (config.modifier != .maskControl && flags.contains(.maskControl))
+            || (config.modifier != .maskAlternate && flags.contains(.maskAlternate))
 
         guard hasModifier, !hasExtraModifiers else {
             return Unmanaged.passRetained(event)

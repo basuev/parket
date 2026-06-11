@@ -6,33 +6,42 @@ package enum Layout {
 }
 
 package enum Tiler {
-    package static func calculateFrames(count: Int, screen: CGRect, layout: Layout) -> [CGRect] {
+    package static let defaultMasterRatio: CGFloat = 0.55
+
+    package static func calculateFrames(
+        count: Int,
+        screen: CGRect,
+        layout: Layout,
+        masterRatio: CGFloat = defaultMasterRatio
+    ) -> [CGRect] {
         guard count > 0 else { return [] }
         switch layout {
-        case .tile: return tileFrames(count: count, screen: screen)
+        case .tile: return tileFrames(count: count, screen: screen, masterRatio: masterRatio)
         case .monocle: return monocleFrames(count: count, screen: screen)
         }
     }
 
-    static func tile(windows: [TrackedWindow], screen: CGRect, layout: Layout) {
-        let frames = calculateFrames(count: windows.count, screen: screen, layout: layout)
+    @MainActor
+    static func tile(windows: [TrackedWindow], screen: CGRect, layout: Layout, masterRatio: CGFloat) {
+        let frames = calculateFrames(count: windows.count, screen: screen, layout: layout, masterRatio: masterRatio)
         for (i, frame) in frames.enumerated() {
             windows[i].setFrame(frame)
         }
     }
 
-    private static func tileFrames(count: Int, screen: CGRect) -> [CGRect] {
+    private static func tileFrames(count: Int, screen: CGRect, masterRatio: CGFloat) -> [CGRect] {
         if count == 1 {
             return [screen]
         }
 
         var result: [CGRect] = []
         result.reserveCapacity(count)
-        let masterWidth = floor(screen.width * Config.shared.masterRatio)
-        result.append(CGRect(
-            x: screen.origin.x, y: screen.origin.y,
-            width: masterWidth, height: screen.height
-        ))
+        let masterWidth = floor(screen.width * masterRatio)
+        result.append(
+            CGRect(
+                x: screen.origin.x, y: screen.origin.y,
+                width: masterWidth, height: screen.height
+            ))
 
         let stackCount = count - 1
         let stackWidth = screen.width - masterWidth
@@ -40,13 +49,15 @@ package enum Tiler {
 
         for i in 1..<count {
             let y = screen.origin.y + CGFloat(i - 1) * stackHeight
-            let h = (i == count - 1)
+            let h =
+                (i == count - 1)
                 ? screen.height - CGFloat(i - 1) * stackHeight
                 : stackHeight
-            result.append(CGRect(
-                x: screen.origin.x + masterWidth, y: y,
-                width: stackWidth, height: h
-            ))
+            result.append(
+                CGRect(
+                    x: screen.origin.x + masterWidth, y: y,
+                    width: stackWidth, height: h
+                ))
         }
         return result
     }

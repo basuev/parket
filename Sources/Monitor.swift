@@ -7,6 +7,7 @@ enum WindowUpdate {
     case unchanged
 }
 
+@MainActor
 package final class Monitor {
     private static let geometryDebounceDelay: TimeInterval = 0.08
     private static let geometrySuppressionDelay: TimeInterval = 0.20
@@ -29,6 +30,7 @@ package final class Monitor {
     }
 
     func switchTo(_ index: Int) {
+        guard !WorkspaceManager.shared.isTilingPaused else { return }
         guard index >= 0, index < Config.shared.workspaceCount, index != active else { return }
 
         let previous = active
@@ -46,6 +48,7 @@ package final class Monitor {
     }
 
     func revealWorkspace(_ index: Int, focusing focused: TrackedWindow) {
+        guard !WorkspaceManager.shared.isTilingPaused else { return }
         guard index >= 0, index < Config.shared.workspaceCount else { return }
 
         if index != active {
@@ -72,6 +75,7 @@ package final class Monitor {
     }
 
     func moveActiveWindowTo(_ index: Int) {
+        guard !WorkspaceManager.shared.isTilingPaused else { return }
         guard index >= 0, index < Config.shared.workspaceCount, index != active else { return }
         guard let focused = WindowManager.focusedWindow() else { return }
 
@@ -159,8 +163,8 @@ package final class Monitor {
     private func focusOffset(_ offset: Int) {
         let windows = workspaces[active]
         guard windows.count > 1,
-              let focused = WindowManager.focusedWindow(),
-              let i = windows.firstIndex(of: focused)
+            let focused = WindowManager.focusedWindow(),
+            let i = windows.firstIndex(of: focused)
         else { return }
         let targetIndex = (i + offset + windows.count) % windows.count
         let target = windows[targetIndex]
@@ -172,10 +176,11 @@ package final class Monitor {
     }
 
     func swapMaster() {
+        guard !WorkspaceManager.shared.isTilingPaused else { return }
         guard workspaces[active].count > 1 else { return }
         guard let focused = WindowManager.focusedWindow(),
-              let i = workspaces[active].firstIndex(of: focused),
-              i != 0
+            let i = workspaces[active].firstIndex(of: focused),
+            i != 0
         else { return }
         workspaces[active].swapAt(0, i)
         retile()
@@ -183,15 +188,18 @@ package final class Monitor {
     }
 
     func toggleLayout() {
+        guard !WorkspaceManager.shared.isTilingPaused else { return }
         layouts[active] = layouts[active] == .tile ? .monocle : .tile
         retile()
         if layouts[active] == .monocle, let focused = WindowManager.focusedWindow(),
-           workspaces[active].contains(focused) {
+            workspaces[active].contains(focused)
+        {
             focused.raise()
         }
     }
 
     private func scheduleRetile() {
+        guard !WorkspaceManager.shared.isTilingPaused else { return }
         guard !retileScheduled else { return }
         retileScheduled = true
         DispatchQueue.main.async { [self] in
@@ -201,6 +209,7 @@ package final class Monitor {
     }
 
     func scheduleCorrectiveRetile() {
+        guard !WorkspaceManager.shared.isTilingPaused else { return }
         let now = ProcessInfo.processInfo.systemUptime
         guard now >= ignoreGeometryUntil else { return }
 
@@ -218,12 +227,22 @@ package final class Monitor {
     }
 
     @discardableResult
-    func retile() -> CGRect {
-        cleanActiveWorkspace()
+    func retile(force: Bool = false) -> CGRect {
         let screen = WindowManager.screenFrame(for: self.screen)
+        guard force || !WorkspaceManager.shared.isTilingPaused else { return screen }
+        cleanActiveWorkspace()
         ignoreGeometryUntil = ProcessInfo.processInfo.systemUptime + Self.geometrySuppressionDelay
-        Tiler.tile(windows: workspaces[active], screen: screen, layout: layouts[active])
+        Tiler.tile(
+            windows: workspaces[active], screen: screen, layout: layouts[active], masterRatio: Config.shared.masterRatio
+        )
         return screen
+    }
+
+    func cancelPendingRetile() {
+        retileScheduled = false
+        geometryRetileWork?.cancel()
+        geometryRetileWork = nil
+        ignoreGeometryUntil = 0
     }
 
     private func cleanActiveWorkspace() {
@@ -257,31 +276,24 @@ package final class Monitor {
     }
 
     package func resizeWorkspaces(to count: Int) {
-        let old = workspaces.count
-        guard count != old else { return }
-
-        if count > old {
-            workspaces.append(contentsOf: Array(repeating: [], count: count - old))
-            layouts.append(contentsOf: Array(repeating: .tile, count: count - old))
-            focusedIndices.append(contentsOf: Array(repeating: 0, count: count - old))
-        } else {
-            let overflow = workspaces[count..<old].joined()
-            workspaces.removeSubrange(count...)
-            layouts.removeSubrange(count...)
-            focusedIndices.removeSubrange(count...)
-            if active >= count {
-                active = count - 1
-            }
-            if previousActive >= count {
-                previousActive = active
-            }
-            workspaces[active].append(contentsOf: overflow)
-        }
+        var state = MonitorWorkspaceState(
+            workspaces: workspaces,
+            layouts: layouts,
+            focusedIndices: focusedIndices,
+            active: active,
+            previousActive: previousActive
+        )
+        state.resize(to: count)
+        workspaces = state.workspaces
+        layouts = state.layouts
+        focusedIndices = state.focusedIndices
+        active = state.active
+        previousActive = state.previousActive
     }
 
     func saveFocusedIndex() {
         guard let focused = WindowManager.focusedWindow(),
-              rememberFocusedWindow(focused)
+            rememberFocusedWindow(focused)
         else { return }
     }
 

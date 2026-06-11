@@ -1,30 +1,115 @@
 import AppKit
 
+@MainActor
 package final class StatusBar: NSObject {
     package static let shared = StatusBar()
 
     private let statusItem: NSStatusItem
     private var lastState: StatusState?
+    private let permissionsItem = NSMenuItem(
+        title: "Permissions", action: #selector(showPermissions), keyEquivalent: "")
+    private let accessibilityItem = NSMenuItem(
+        title: "Accessibility", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+    private let inputMonitoringItem = NSMenuItem(
+        title: "Input Monitoring", action: #selector(openInputMonitoringSettings), keyEquivalent: "")
+    private let recheckPermissionsItem = NSMenuItem(
+        title: "Recheck Permissions", action: #selector(recheckPermissions), keyEquivalent: "")
+    private let pauseItem = NSMenuItem(title: "Pause Tiling", action: #selector(togglePause), keyEquivalent: "p")
+    private let retileItem = NSMenuItem(title: "Retile Now", action: #selector(retileNow), keyEquivalent: "t")
+    private let restoreItem = NSMenuItem(
+        title: "Restore All Windows", action: #selector(restoreAllWindows), keyEquivalent: "")
+    private let reloadItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "r")
+    private let openConfigItem = NSMenuItem(title: "Open Config", action: #selector(openConfig), keyEquivalent: "")
+    private let copyDiagnosticsItem = NSMenuItem(
+        title: "Copy Diagnostic Report", action: #selector(copyDiagnosticReport), keyEquivalent: "")
+    private let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
 
     private override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
+        buildMenu()
+        update()
+    }
 
+    private func buildMenu() {
         let menu = NSMenu()
-        let reloadItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "r")
-        reloadItem.target = self
-        menu.addItem(reloadItem)
+        for item in [
+            permissionsItem,
+            accessibilityItem,
+            inputMonitoringItem,
+            recheckPermissionsItem,
+            pauseItem,
+            retileItem,
+            restoreItem,
+            reloadItem,
+            openConfigItem,
+            copyDiagnosticsItem,
+            quitItem,
+        ] {
+            item.target = self
+        }
+
+        menu.addItem(permissionsItem)
+        menu.addItem(accessibilityItem)
+        menu.addItem(inputMonitoringItem)
+        menu.addItem(recheckPermissionsItem)
         menu.addItem(NSMenuItem.separator())
-        let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
+        menu.addItem(pauseItem)
+        menu.addItem(retileItem)
+        menu.addItem(restoreItem)
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(reloadItem)
+        menu.addItem(openConfigItem)
+        menu.addItem(copyDiagnosticsItem)
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(quitItem)
         statusItem.menu = menu
+    }
 
-        update()
+    @objc private func showPermissions() {
+        ParketRuntime.shared.showPermissions()
+    }
+
+    @objc private func openAccessibilitySettings() {
+        Permissions.request(.accessibility)
+        Permissions.openSettings(.accessibility)
+        ParketRuntime.shared.refreshPermissions(prompt: false)
+    }
+
+    @objc private func openInputMonitoringSettings() {
+        Permissions.request(.inputMonitoring)
+        Permissions.openSettings(.inputMonitoring)
+        ParketRuntime.shared.refreshPermissions(prompt: false)
+    }
+
+    @objc private func recheckPermissions() {
+        ParketRuntime.shared.refreshPermissions(prompt: false)
+    }
+
+    @objc private func togglePause() {
+        WorkspaceManager.shared.toggleTilingPaused()
+    }
+
+    @objc private func retileNow() {
+        WorkspaceManager.shared.retileNow()
+    }
+
+    @objc private func restoreAllWindows() {
+        WorkspaceManager.shared.pauseTilingAndRestoreAllWindows()
     }
 
     @objc private func reloadConfig() {
         WorkspaceManager.shared.reloadConfig()
+    }
+
+    @objc private func openConfig() {
+        Config.openConfig()
+    }
+
+    @objc private func copyDiagnosticReport() {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(ParketRuntime.shared.diagnosticReport(), forType: .string)
     }
 
     @objc private func quit() {
@@ -32,6 +117,7 @@ package final class StatusBar: NSObject {
     }
 
     func update() {
+        updateMenu()
         let ws = WorkspaceManager.shared
         let state = StatusState.capture(ws)
         guard state != lastState else { return }
@@ -40,6 +126,24 @@ package final class StatusBar: NSObject {
         var views: [NSView] = []
         let font = NSFont.menuBarFont(ofSize: 0)
         let fontSize = font.pointSize
+        let runtime = ParketRuntime.shared
+
+        if !runtime.permissions.isReady || runtime.startupIssue != nil {
+            let codes = runtime.permissions.missingCodes
+            if codes.isEmpty {
+                views.append(LayoutIndicatorView(text: "ERR", fontSize: fontSize))
+            } else {
+                for code in codes {
+                    views.append(LayoutIndicatorView(text: "\(code)!", fontSize: fontSize))
+                }
+            }
+            applyViews(views)
+            return
+        }
+
+        if ws.isTilingPaused {
+            views.append(LayoutIndicatorView(text: "PAUSED", fontSize: fontSize))
+        }
 
         guard !ws.monitors.isEmpty else {
             views.append(BadgeView(number: 1, fontSize: fontSize, active: true))
@@ -76,6 +180,25 @@ package final class StatusBar: NSObject {
         applyViews(views)
     }
 
+    private func updateMenu() {
+        let runtime = ParketRuntime.shared
+        let permissions = runtime.permissions
+        let ws = WorkspaceManager.shared
+        let missing = permissions.missingCodes.joined(separator: ", ")
+
+        permissionsItem.title =
+            permissions.isReady
+            ? "Permissions: Granted"
+            : "Permissions: Missing \(missing)"
+        accessibilityItem.title = "Accessibility: \(permissions.accessibility ? "Granted" : "Missing")"
+        inputMonitoringItem.title = "Input Monitoring: \(permissions.inputMonitoring ? "Granted" : "Missing")"
+
+        pauseItem.state = ws.isTilingPaused ? .on : .off
+        retileItem.isEnabled = runtime.isRunning
+        restoreItem.isEnabled = runtime.isRunning
+        reloadItem.isEnabled = runtime.isRunning
+    }
+
     private func applyViews(_ views: [NSView]) {
         let stack = NSStackView(views: views)
         stack.spacing = 4
@@ -84,7 +207,9 @@ package final class StatusBar: NSObject {
         DispatchQueue.main.async {
             guard let button = self.statusItem.button else { return }
             button.title = ""
-            button.subviews.forEach { $0.removeFromSuperview() }
+            for view in button.subviews {
+                view.removeFromSuperview()
+            }
             stack.translatesAutoresizingMaskIntoConstraints = false
             button.addSubview(stack)
             NSLayoutConstraint.activate([
@@ -98,8 +223,8 @@ package final class StatusBar: NSObject {
 
 private let badgeColor = NSColor(name: nil) { appearance in
     appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        ? NSColor(red: 230/255, green: 230/255, blue: 235/255, alpha: 1)
-        : NSColor(red: 26/255, green: 34/255, blue: 37/255, alpha: 1)
+        ? NSColor(red: 230 / 255, green: 230 / 255, blue: 235 / 255, alpha: 1)
+        : NSColor(red: 26 / 255, green: 34 / 255, blue: 37 / 255, alpha: 1)
 }
 
 private func drawCenteredText(_ text: String, in bounds: NSRect, fontSize: CGFloat, color: NSColor, ctx: CGContext) {
@@ -154,6 +279,10 @@ private final class BadgeView: NSView {
 }
 
 private struct StatusState: Equatable {
+    let permissions: PermissionSnapshot
+    let startupIssue: String?
+    let runtimeRunning: Bool
+    let tilingPaused: Bool
     let monitorCount: Int
     let focusedMonitorIndex: Int
     let activeWorkspace: Int
@@ -161,9 +290,15 @@ private struct StatusState: Equatable {
     let occupiedWorkspaces: [Bool]
     let activeWindowCount: Int
 
+    @MainActor
     static func capture(_ ws: WorkspaceManager) -> StatusState {
+        let runtime = ParketRuntime.shared
         guard !ws.monitors.isEmpty else {
             return StatusState(
+                permissions: runtime.permissions,
+                startupIssue: runtime.startupIssue,
+                runtimeRunning: runtime.isRunning,
+                tilingPaused: ws.isTilingPaused,
                 monitorCount: 0, focusedMonitorIndex: 0, activeWorkspace: 0,
                 activeLayout: .tile, occupiedWorkspaces: [], activeWindowCount: 0
             )
@@ -171,6 +306,10 @@ private struct StatusState: Equatable {
         let monitor = ws.focusedMonitor
         let occupied = (0..<Config.shared.workspaceCount).map { !monitor.workspaces[$0].isEmpty }
         return StatusState(
+            permissions: runtime.permissions,
+            startupIssue: runtime.startupIssue,
+            runtimeRunning: runtime.isRunning,
+            tilingPaused: ws.isTilingPaused,
             monitorCount: ws.monitors.count,
             focusedMonitorIndex: ws.focusedMonitorIndex,
             activeWorkspace: monitor.active,
