@@ -1,6 +1,19 @@
 import AppKit
 import ApplicationServices
 
+private struct AXCallbackElement: @unchecked Sendable {
+    let value: AXUIElement
+}
+
+private struct AXCallbackNotification: @unchecked Sendable {
+    let value: CFString
+}
+
+private struct WorkspaceNotification: @unchecked Sendable {
+    let value: Notification
+}
+
+@MainActor
 package final class WindowObserver {
     package static let shared = WindowObserver()
 
@@ -17,31 +30,31 @@ package final class WindowObserver {
         nc.addObserver(
             forName: NSWorkspace.didLaunchApplicationNotification,
             object: nil, queue: .main
-        ) { [weak self] note in
-            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  app.activationPolicy == .regular
-            else { return }
-            self?.handleAppLaunched(app)
+        ) { note in
+            let notification = WorkspaceNotification(value: note)
+            MainActor.assumeIsolated {
+                WindowObserver.shared.handleLaunchNotification(notification.value)
+            }
         }
 
         nc.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification,
             object: nil, queue: .main
         ) { note in
-            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-            let pid = app.processIdentifier
-            WorkspaceManager.shared.removeWindow(pid: pid)
-            WindowObserver.shared.observers.removeValue(forKey: pid)
+            let notification = WorkspaceNotification(value: note)
+            MainActor.assumeIsolated {
+                WindowObserver.shared.handleTerminateNotification(notification.value)
+            }
         }
 
         nc.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil, queue: .main
         ) { note in
-            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  app.activationPolicy == .regular
-            else { return }
-            WorkspaceManager.shared.followExternalFocus(pid: app.processIdentifier)
+            let notification = WorkspaceNotification(value: note)
+            MainActor.assumeIsolated {
+                WindowObserver.shared.handleActivateNotification(notification.value)
+            }
         }
 
         for app in NSWorkspace.shared.runningApplications {
@@ -52,6 +65,27 @@ package final class WindowObserver {
                 observeWindows(windows, pid: pid)
             }
         }
+    }
+
+    private func handleLaunchNotification(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+            app.activationPolicy == .regular
+        else { return }
+        handleAppLaunched(app)
+    }
+
+    private func handleTerminateNotification(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+        let pid = app.processIdentifier
+        WorkspaceManager.shared.removeWindow(pid: pid)
+        observers.removeValue(forKey: pid)
+    }
+
+    private func handleActivateNotification(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+            app.activationPolicy == .regular
+        else { return }
+        WorkspaceManager.shared.followExternalFocus(pid: app.processIdentifier)
     }
 
     private func handleAppLaunched(_ app: NSRunningApplication) {
@@ -94,16 +128,27 @@ package final class WindowObserver {
     }
 
     private static let axCallback: AXObserverCallback = { _, element, notification, _ in
+        let callbackElement = AXCallbackElement(value: element)
+        let callbackNotification = AXCallbackNotification(value: notification)
+        MainActor.assumeIsolated {
+            WindowObserver.shared.handleAXNotification(
+                element: callbackElement.value,
+                notification: callbackNotification.value
+            )
+        }
+    }
+
+    private func handleAXNotification(element: AXUIElement, notification: CFString) {
         let notif = notification as String
 
         if notif == kAXWindowCreatedNotification {
             var pidValue: pid_t = 0
             AXUIElementGetPid(element, &pidValue)
-            WindowObserver.shared.trySyncWindows(pid: pidValue, attempt: 0)
+            trySyncWindows(pid: pidValue, attempt: 0)
         } else if notif == kAXUIElementDestroyedNotification {
             var pidValue: pid_t = 0
             AXUIElementGetPid(element, &pidValue)
-            if let obs = WindowObserver.shared.observers[pidValue] {
+            if let obs = observers[pidValue] {
                 for name in [
                     kAXUIElementDestroyedNotification,
                     kAXMovedNotification,
