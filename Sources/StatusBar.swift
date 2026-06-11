@@ -6,22 +6,25 @@ package final class StatusBar: NSObject {
 
     private let statusItem: NSStatusItem
     private var lastState: StatusState?
-    private let permissionsItem = NSMenuItem(
-        title: "Permissions", action: #selector(showPermissions), keyEquivalent: "")
-    private let accessibilityItem = NSMenuItem(
-        title: "Accessibility", action: #selector(openAccessibilitySettings), keyEquivalent: "")
-    private let recheckPermissionsItem = NSMenuItem(
-        title: "Recheck Permissions", action: #selector(recheckPermissions), keyEquivalent: "")
-    private let hotkeysItem = NSMenuItem(title: "Hotkeys", action: nil, keyEquivalent: "")
+    private let stateSummaryItem = NSMenuItem(title: "parket", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "Pause Tiling", action: #selector(togglePause), keyEquivalent: "p")
     private let retileItem = NSMenuItem(title: "Retile Now", action: #selector(retileNow), keyEquivalent: "t")
     private let restoreItem = NSMenuItem(
-        title: "Restore All Windows", action: #selector(restoreAllWindows), keyEquivalent: "")
-    private let reloadItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "r")
+        title: "Pause and Restore Windows", action: #selector(restoreAllWindows), keyEquivalent: "")
+    private let openAccessibilityItem = NSMenuItem(
+        title: "Open Accessibility Settings", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+    private let recheckAccessibilityItem = NSMenuItem(
+        title: "Recheck Accessibility", action: #selector(recheckPermissions), keyEquivalent: "")
     private let openConfigItem = NSMenuItem(title: "Open Config", action: #selector(openConfig), keyEquivalent: "")
+    private let reloadItem = NSMenuItem(title: "Reload Config", action: #selector(reloadConfig), keyEquivalent: "r")
     private let copyDiagnosticsItem = NSMenuItem(
         title: "Copy Diagnostic Report", action: #selector(copyDiagnosticReport), keyEquivalent: "")
-    private let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+    private let quitItem = NSMenuItem(title: "Quit parket", action: #selector(quit), keyEquivalent: "q")
+    private let stateSeparator = NSMenuItem.separator()
+    private let problemSeparator = NSMenuItem.separator()
+    private let configSeparator = NSMenuItem.separator()
+    private let diagnosticsSeparator = NSMenuItem.separator()
+    private let quitSeparator = NSMenuItem.separator()
 
     private override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -33,39 +36,36 @@ package final class StatusBar: NSObject {
     private func buildMenu() {
         let menu = NSMenu()
         for item in [
-            permissionsItem,
-            accessibilityItem,
-            recheckPermissionsItem,
             pauseItem,
             retileItem,
             restoreItem,
-            reloadItem,
+            openAccessibilityItem,
+            recheckAccessibilityItem,
             openConfigItem,
+            reloadItem,
             copyDiagnosticsItem,
             quitItem,
         ] {
             item.target = self
         }
 
-        menu.addItem(permissionsItem)
-        menu.addItem(accessibilityItem)
-        menu.addItem(recheckPermissionsItem)
-        menu.addItem(hotkeysItem)
-        menu.addItem(NSMenuItem.separator())
+        stateSummaryItem.isEnabled = false
+        menu.addItem(stateSummaryItem)
+        menu.addItem(stateSeparator)
         menu.addItem(pauseItem)
         menu.addItem(retileItem)
         menu.addItem(restoreItem)
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(reloadItem)
+        menu.addItem(problemSeparator)
+        menu.addItem(openAccessibilityItem)
+        menu.addItem(recheckAccessibilityItem)
+        menu.addItem(configSeparator)
         menu.addItem(openConfigItem)
+        menu.addItem(reloadItem)
+        menu.addItem(diagnosticsSeparator)
         menu.addItem(copyDiagnosticsItem)
-        menu.addItem(NSMenuItem.separator())
+        menu.addItem(quitSeparator)
         menu.addItem(quitItem)
         statusItem.menu = menu
-    }
-
-    @objc private func showPermissions() {
-        ParketRuntime.shared.showPermissions()
     }
 
     @objc private func openAccessibilitySettings() {
@@ -128,30 +128,29 @@ package final class StatusBar: NSObject {
         let runtime = ParketRuntime.shared
 
         if !runtime.permissions.isReady {
-            let codes = runtime.permissions.missingCodes
-            if codes.isEmpty {
-                views.append(LayoutIndicatorView(text: "ERR", fontSize: fontSize))
-            } else {
-                for code in codes {
-                    views.append(LayoutIndicatorView(text: "\(code)!", fontSize: fontSize))
-                }
-            }
+            views.append(
+                SymbolBadgeView(
+                    symbolName: "accessibility", accessibilityLabel: "Accessibility Missing", fontSize: fontSize))
             applyViews(views)
             return
         }
 
         if runtime.startupIssue != nil {
-            views.append(LayoutIndicatorView(text: "ERR", fontSize: fontSize))
+            views.append(
+                SymbolBadgeView(
+                    symbolName: "exclamationmark.triangle", accessibilityLabel: "Startup Issue", fontSize: fontSize))
             applyViews(views)
             return
         }
 
         if Hotkeys.shared.status == .degraded {
-            views.append(LayoutIndicatorView(text: "KEY!", fontSize: fontSize))
+            views.append(
+                SymbolBadgeView(symbolName: "keyboard", accessibilityLabel: "Hotkeys Degraded", fontSize: fontSize))
         }
 
         if ws.isTilingPaused {
-            views.append(LayoutIndicatorView(text: "PAUSED", fontSize: fontSize))
+            views.append(
+                SymbolBadgeView(symbolName: "pause.fill", accessibilityLabel: "Tiling Paused", fontSize: fontSize))
         }
 
         guard !ws.monitors.isEmpty else {
@@ -164,13 +163,13 @@ package final class StatusBar: NSObject {
 
         if ws.monitors.count > 1 {
             let monitorNumber = ws.focusedMonitorIndex + 1
-            views.append(LayoutIndicatorView(text: "\(monitorNumber):", fontSize: fontSize))
+            views.append(MonitorBadgeView(number: monitorNumber, fontSize: fontSize))
         }
 
         let layout = monitor.layouts[monitor.active]
         if layout == .monocle {
             let windowCount = monitor.workspaces[monitor.active].count
-            views.append(LayoutIndicatorView(text: "M\(windowCount)", fontSize: fontSize))
+            views.append(MonocleBadgeView(windowCount: windowCount, fontSize: fontSize))
         }
 
         for i in 0..<Config.shared.workspaceCount {
@@ -193,15 +192,14 @@ package final class StatusBar: NSObject {
         let runtime = ParketRuntime.shared
         let permissions = runtime.permissions
         let ws = WorkspaceManager.shared
-        let missing = permissions.missingCodes.joined(separator: ", ")
 
-        permissionsItem.title =
-            permissions.isReady
-            ? "Permissions: Granted"
-            : "Permissions: Missing \(missing)"
-        accessibilityItem.title = "Accessibility: \(permissions.accessibility ? "Granted" : "Missing")"
-        hotkeysItem.title = hotkeysTitle()
-        hotkeysItem.isEnabled = false
+        stateSummaryItem.title = stateSummaryTitle()
+        stateSummaryItem.isEnabled = false
+
+        let showAccessibilityActions = !permissions.accessibility
+        problemSeparator.isHidden = !showAccessibilityActions
+        openAccessibilityItem.isHidden = !showAccessibilityActions
+        recheckAccessibilityItem.isHidden = !showAccessibilityActions
 
         pauseItem.state = ws.isTilingPaused ? .on : .off
         pauseItem.isEnabled = runtime.isRunning
@@ -212,16 +210,45 @@ package final class StatusBar: NSObject {
         copyDiagnosticsItem.isEnabled = true
     }
 
-    private func hotkeysTitle() -> String {
-        let hotkeys = Hotkeys.shared
-        switch hotkeys.status {
-        case .stopped:
-            return "Hotkeys: Stopped"
-        case .running:
-            return "Hotkeys: Running"
-        case .degraded:
-            return "Hotkeys: Degraded (\(hotkeys.issueCount) failed)"
+    private func stateSummaryTitle() -> String {
+        let runtime = ParketRuntime.shared
+        let ws = WorkspaceManager.shared
+
+        if !runtime.permissions.isReady {
+            return "parket: Accessibility Missing"
         }
+
+        if runtime.startupIssue != nil {
+            return "parket: Startup Issue"
+        }
+
+        var problemParts: [String] = []
+        if Hotkeys.shared.status == .degraded {
+            problemParts.append("Hotkeys Degraded")
+        }
+        if ws.isTilingPaused {
+            problemParts.append("Paused")
+        }
+        if !problemParts.isEmpty {
+            return "parket: \(problemParts.joined(separator: ", "))"
+        }
+
+        guard !ws.monitors.isEmpty else {
+            return "parket: Workspace 1"
+        }
+
+        let monitor = ws.focusedMonitor
+        let display = ws.monitors.count > 1 ? "Display \(ws.focusedMonitorIndex + 1), " : ""
+        if monitor.layouts[monitor.active] == .monocle {
+            let count = monitor.workspaces[monitor.active].count
+            return "parket: \(display)Monocle, \(count) \(Self.windowWord(count))"
+        }
+
+        return "parket: \(display)Workspace \(monitor.active + 1)"
+    }
+
+    private static func windowWord(_ count: Int) -> String {
+        count == 1 ? "window" : "windows"
     }
 
     private func applyViews(_ views: [NSView]) {
@@ -303,6 +330,123 @@ private final class BadgeView: NSView {
     }
 }
 
+private final class SymbolBadgeView: NSView {
+    private let imageView = NSImageView()
+
+    init(symbolName: String, accessibilityLabel: String, fontSize: CGFloat) {
+        super.init(frame: .zero)
+        let size = fontSize + 6
+        widthAnchor.constraint(equalToConstant: size).isActive = true
+        heightAnchor.constraint(equalToConstant: size).isActive = true
+        setAccessibilityElement(true)
+        setAccessibilityLabel(accessibilityLabel)
+
+        let configuration = NSImage.SymbolConfiguration(pointSize: fontSize - 3, weight: .semibold)
+        imageView.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: accessibilityLabel)?
+            .withSymbolConfiguration(configuration)
+        imageView.contentTintColor = badgeColor
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: size - 6),
+            imageView.heightAnchor.constraint(equalToConstant: size - 6),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        imageView.contentTintColor = badgeColor
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        ctx.addPath(path)
+        ctx.setStrokeColor(badgeColor.cgColor)
+        ctx.setLineWidth(1)
+        ctx.strokePath()
+    }
+}
+
+private final class MonitorBadgeView: NSView {
+    private let number: Int
+    private let fontSize: CGFloat
+
+    init(number: Int, fontSize: CGFloat) {
+        self.number = number
+        self.fontSize = fontSize
+        super.init(frame: .zero)
+        widthAnchor.constraint(equalToConstant: fontSize + 12).isActive = true
+        heightAnchor.constraint(equalToConstant: fontSize + 6).isActive = true
+        setAccessibilityElement(true)
+        setAccessibilityLabel("Display \(number)")
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let screenRect = bounds.insetBy(dx: 2.5, dy: 3.0)
+        let path = CGPath(roundedRect: screenRect, cornerWidth: 2.5, cornerHeight: 2.5, transform: nil)
+        ctx.addPath(path)
+        ctx.setStrokeColor(badgeColor.cgColor)
+        ctx.setLineWidth(1)
+        ctx.strokePath()
+        drawCenteredText("\(number)", in: screenRect, fontSize: fontSize, color: badgeColor, ctx: ctx)
+    }
+}
+
+private final class MonocleBadgeView: NSView {
+    private let windowCount: Int
+    private let fontSize: CGFloat
+
+    init(windowCount: Int, fontSize: CGFloat) {
+        self.windowCount = windowCount
+        self.fontSize = fontSize
+        super.init(frame: .zero)
+        widthAnchor.constraint(equalToConstant: windowCount > 1 ? fontSize + 15 : fontSize + 6).isActive = true
+        heightAnchor.constraint(equalToConstant: fontSize + 6).isActive = true
+        setAccessibilityElement(true)
+        setAccessibilityLabel(
+            windowCount == 1 ? "Monocle Layout, 1 Window" : "Monocle Layout, \(windowCount) Windows")
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
+        ctx.addPath(path)
+        ctx.setStrokeColor(badgeColor.cgColor)
+        ctx.setLineWidth(1)
+        ctx.strokePath()
+
+        let iconSize = fontSize - 5
+        let iconX = windowCount > 1 ? rect.minX + 4 : rect.midX - iconSize / 2
+        let iconRect = CGRect(x: iconX, y: rect.midY - iconSize / 2, width: iconSize, height: iconSize)
+        ctx.addPath(CGPath(roundedRect: iconRect, cornerWidth: 1.5, cornerHeight: 1.5, transform: nil))
+        ctx.setFillColor(badgeColor.cgColor)
+        ctx.fillPath()
+
+        if windowCount > 1 {
+            let textRect = CGRect(
+                x: iconRect.maxX + 2, y: rect.minY, width: rect.maxX - iconRect.maxX - 3, height: rect.height)
+            drawCenteredText("\(windowCount)", in: textRect, fontSize: fontSize, color: badgeColor, ctx: ctx)
+        }
+    }
+}
+
 private struct StatusState: Equatable {
     let permissions: PermissionSnapshot
     let startupIssue: String?
@@ -348,29 +492,5 @@ private struct StatusState: Equatable {
             occupiedWorkspaces: occupied,
             activeWindowCount: monitor.workspaces[monitor.active].count
         )
-    }
-}
-
-private final class LayoutIndicatorView: NSView {
-    private let text: String
-    private let fontSize: CGFloat
-
-    init(text: String, fontSize: CGFloat) {
-        self.text = text
-        self.fontSize = fontSize
-        super.init(frame: .zero)
-        let font = NSFont.systemFont(ofSize: fontSize - 1)
-        let str = NSAttributedString(string: text, attributes: [.font: font])
-        let textWidth = str.size().width
-        widthAnchor.constraint(equalToConstant: textWidth + 6).isActive = true
-        heightAnchor.constraint(equalToConstant: fontSize + 6).isActive = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        drawCenteredText(text, in: bounds, fontSize: fontSize, color: badgeColor, ctx: ctx)
     }
 }

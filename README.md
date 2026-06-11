@@ -24,7 +24,7 @@ make install
 open /Applications/parket.app
 ```
 
-parket opens a permission window on first launch. grant Accessibility, then use Recheck Permissions from the window or menubar.
+parket opens a permission window on first launch. grant Accessibility, then use Recheck from the window or Recheck Accessibility from the menubar.
 
 ## requirements
 
@@ -94,7 +94,7 @@ custom bindings always include the modifier key (option by default). prefix with
 
 to reload config at runtime, use the "Reload Config" option in the menubar menu.
 
-the menubar menu also includes "Pause Tiling", "Retile Now", "Restore All Windows", "Open Config", and "Copy Diagnostic Report". "Restore All Windows" pauses tiling first, then brings tracked windows back onscreen.
+the menubar menu also includes "Pause Tiling", "Retile Now", "Pause and Restore Windows", "Open Config", and "Copy Diagnostic Report". "Pause and Restore Windows" pauses tiling first, then brings tracked windows back onscreen.
 
 ## update
 

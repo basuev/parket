@@ -4,9 +4,9 @@ import AppKit
 package final class PermissionWindowController: NSWindowController {
     package static let shared = PermissionWindowController()
 
-    private let titleLabel = PermissionWindowController.label("parket needs permissions", size: 17, weight: .semibold)
+    private let titleLabel = PermissionWindowController.label("parket needs Accessibility", size: 17, weight: .semibold)
     private let detailsLabel = PermissionWindowController.wrappingLabel(
-        "Grant Accessibility, then use Recheck Permissions. parket starts tiling only after Accessibility is granted."
+        "Grant Accessibility, then use Recheck. parket starts tiling only after Accessibility is granted."
     )
     private let accessibilityState = PermissionWindowController.label("", size: 13, weight: .regular)
     private let startupIssueLabel = PermissionWindowController.wrappingLabel("")
@@ -18,7 +18,7 @@ package final class PermissionWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "parket Permissions"
+        window.title = "parket Accessibility"
         window.isReleasedWhenClosed = false
         super.init(window: window)
         buildContent()
@@ -48,12 +48,12 @@ package final class PermissionWindowController: NSWindowController {
 
     private func buildContent() {
         let openAccessibility = NSButton(
-            title: "Open Accessibility",
+            title: "Open Accessibility Settings",
             target: self,
             action: #selector(openAccessibilitySettings)
         )
         let recheck = NSButton(
-            title: "Recheck Permissions",
+            title: "Recheck",
             target: self,
             action: #selector(recheckPermissions)
         )
