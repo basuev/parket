@@ -69,9 +69,11 @@ package enum PerformanceTelemetry {
         samples[operation] = operationSamples
 
         if milliseconds >= 50 {
-            logger.notice("\(operation.rawValue, privacy: .public) took \(milliseconds, format: .fixed(precision: 1)) ms")
+            logger.notice(
+                "\(operation.rawValue, privacy: .public) took \(milliseconds, format: .fixed(precision: 1)) ms")
         } else {
-            logger.debug("\(operation.rawValue, privacy: .public) took \(milliseconds, format: .fixed(precision: 1)) ms")
+            logger.debug(
+                "\(operation.rawValue, privacy: .public) took \(milliseconds, format: .fixed(precision: 1)) ms")
         }
     }
 

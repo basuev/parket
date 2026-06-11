@@ -396,7 +396,8 @@ private final class StatusContentView: NSView {
 
     override var intrinsicContentSize: NSSize {
         let sizes = segments.map { $0.size(fontSize: fontSize) }
-        let contentWidth = sizes.reduce(0) { $0 + $1.width }
+        let contentWidth =
+            sizes.reduce(0) { $0 + $1.width }
             + CGFloat(max(0, sizes.count - 1)) * Self.spacing
         let contentHeight = sizes.map(\.height).max() ?? fontSize + 6
         return NSSize(

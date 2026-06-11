@@ -246,7 +246,8 @@ package final class Monitor {
             }
             suppressGeometryNotifications()
             Tiler.tile(
-                windows: workspaces[active], screen: screen, layout: layouts[active], masterRatio: Config.shared.masterRatio
+                windows: workspaces[active], screen: screen, layout: layouts[active],
+                masterRatio: Config.shared.masterRatio
             )
             return screen
         }
