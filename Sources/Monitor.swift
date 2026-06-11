@@ -23,6 +23,7 @@ package final class Monitor {
     private var retileScheduled = false
     private var geometryRetileWork: DispatchWorkItem?
     private var ignoreGeometryUntil: TimeInterval = 0
+    private var geometryOperationGeneration: UInt64 = 0
 
     init(displayID: CGDirectDisplayID, screen: NSScreen) {
         self.displayID = displayID
@@ -33,18 +34,24 @@ package final class Monitor {
         guard !WorkspaceManager.shared.isTilingPaused else { return }
         guard index >= 0, index < Config.shared.workspaceCount, index != active else { return }
 
-        let previous = active
-        previousActive = previous
-        saveFocusedIndex()
-        active = index
+        PerformanceTelemetry.measure(.workspaceSwitch) {
+            let previous = active
+            previousActive = previous
+            active = index
 
-        let screen = WindowManager.screenRect(for: self.screen)
-        for win in workspaces[previous] {
-            win.hideOffscreen(screen)
+            let screen = WindowManager.screenRect(for: self.screen)
+            suppressGeometryNotifications()
+            PerformanceTelemetry.measure(.hideWorkspace) {
+                for win in workspaces[previous] {
+                    win.hideOffscreen(screen)
+                }
+            }
+
+            retile(validate: false)
+            PerformanceTelemetry.measure(.focusRestore) {
+                restoreFocusedWindow()
+            }
         }
-
-        retile()
-        restoreFocusedWindow()
     }
 
     func revealWorkspace(_ index: Int, focusing focused: TrackedWindow) {
@@ -54,23 +61,24 @@ package final class Monitor {
         if index != active {
             let previous = active
             previousActive = previous
-            saveFocusedIndex()
             active = index
 
             let screen = WindowManager.screenRect(for: self.screen)
-            for win in workspaces[previous] {
-                win.hideOffscreen(screen)
+            suppressGeometryNotifications()
+            PerformanceTelemetry.measure(.hideWorkspace) {
+                for win in workspaces[previous] {
+                    win.hideOffscreen(screen)
+                }
             }
         }
 
         guard rememberFocusedWindow(focused) else { return }
-        retile()
+        retile(validate: false)
         guard rememberFocusedWindow(focused) else { return }
 
         let target = workspaces[active][focusedIndices[active]]
-        target.focus()
-        if layouts[active] == .monocle {
-            target.raise()
+        PerformanceTelemetry.measure(.focusRestore) {
+            target.focus()
         }
     }
 
@@ -84,7 +92,7 @@ package final class Monitor {
         workspaces[active].remove(at: i)
         workspaces[index].insert(moved, at: 0)
 
-        retile()
+        retile(validate: false)
         moved.hideOffscreen(WindowManager.screenRect(for: self.screen))
 
         if let next = workspaces[active].first {
@@ -170,9 +178,6 @@ package final class Monitor {
         let target = windows[targetIndex]
         target.focus()
         focusedIndices[active] = targetIndex
-        if layouts[active] == .monocle {
-            target.raise()
-        }
     }
 
     func swapMaster() {
@@ -183,14 +188,14 @@ package final class Monitor {
             i != 0
         else { return }
         workspaces[active].swapAt(0, i)
-        retile()
+        retile(validate: false)
         workspaces[active][0].focus()
     }
 
     func toggleLayout() {
         guard !WorkspaceManager.shared.isTilingPaused else { return }
         layouts[active] = layouts[active] == .tile ? .monocle : .tile
-        retile()
+        retile(validate: false)
         if layouts[active] == .monocle, let focused = WindowManager.focusedWindow(),
             workspaces[active].contains(focused)
         {
@@ -204,38 +209,47 @@ package final class Monitor {
         retileScheduled = true
         DispatchQueue.main.async { [self] in
             retileScheduled = false
-            retile()
+            retile(validate: false)
         }
     }
 
     func scheduleCorrectiveRetile() {
         guard !WorkspaceManager.shared.isTilingPaused else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        guard now >= ignoreGeometryUntil else { return }
+        guard now >= ignoreGeometryUntil else {
+            PerformanceTelemetry.recordSuppressedGeometryNotification()
+            return
+        }
 
         geometryRetileWork?.cancel()
         let scheduledActive = active
+        let scheduledGeneration = geometryOperationGeneration
         let work = DispatchWorkItem { [self] in
             geometryRetileWork = nil
             guard active == scheduledActive else { return }
+            guard geometryOperationGeneration == scheduledGeneration else { return }
             guard ProcessInfo.processInfo.systemUptime >= ignoreGeometryUntil else { return }
             guard !activeWorkspaceMatchesLayout(tolerance: Self.frameTolerance) else { return }
-            retile()
+            retile(validate: false)
         }
         geometryRetileWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.geometryDebounceDelay, execute: work)
     }
 
     @discardableResult
-    func retile(force: Bool = false) -> CGRect {
+    func retile(force: Bool = false, validate: Bool = true) -> CGRect {
         let screen = WindowManager.screenFrame(for: self.screen)
         guard force || !WorkspaceManager.shared.isTilingPaused else { return screen }
-        cleanActiveWorkspace()
-        ignoreGeometryUntil = ProcessInfo.processInfo.systemUptime + Self.geometrySuppressionDelay
-        Tiler.tile(
-            windows: workspaces[active], screen: screen, layout: layouts[active], masterRatio: Config.shared.masterRatio
-        )
-        return screen
+        return PerformanceTelemetry.measure(.retile) {
+            if validate {
+                cleanActiveWorkspace()
+            }
+            suppressGeometryNotifications()
+            Tiler.tile(
+                windows: workspaces[active], screen: screen, layout: layouts[active], masterRatio: Config.shared.masterRatio
+            )
+            return screen
+        }
     }
 
     func cancelPendingRetile() {
@@ -243,6 +257,7 @@ package final class Monitor {
         geometryRetileWork?.cancel()
         geometryRetileWork = nil
         ignoreGeometryUntil = 0
+        geometryOperationGeneration &+= 1
     }
 
     private func cleanActiveWorkspace() {
@@ -273,6 +288,11 @@ package final class Monitor {
             && abs(lhs.origin.y - rhs.origin.y) <= tolerance
             && abs(lhs.width - rhs.width) <= tolerance
             && abs(lhs.height - rhs.height) <= tolerance
+    }
+
+    private func suppressGeometryNotifications() {
+        geometryOperationGeneration &+= 1
+        ignoreGeometryUntil = ProcessInfo.processInfo.systemUptime + Self.geometrySuppressionDelay
     }
 
     package func resizeWorkspaces(to count: Int) {
@@ -317,6 +337,7 @@ package final class Monitor {
         geometryRetileWork?.cancel()
         geometryRetileWork = nil
         ignoreGeometryUntil = 0
+        geometryOperationGeneration &+= 1
         let count = Config.shared.workspaceCount
         workspaces = Array(repeating: [], count: count)
         layouts = Array(repeating: .tile, count: count)
@@ -331,9 +352,6 @@ package final class Monitor {
         let idx = min(focusedIndices[active], windows.count - 1)
         let target = windows[idx]
         target.focus()
-        if layouts[active] == .monocle {
-            target.raise()
-        }
     }
 
     func restoreAllWindows() {

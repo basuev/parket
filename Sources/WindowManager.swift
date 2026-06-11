@@ -55,7 +55,10 @@ struct TrackedWindow: Equatable {
         var p = point
         guard let value = AXValueCreate(.cgPoint, &p) else { return }
         for member in members {
-            AXUIElementSetAttributeValue(member, kAXPositionAttribute as CFString, value)
+            guard WindowManager.shouldApplyPosition(point, to: member) else { continue }
+            if WindowManager.setAttributeValue(member, kAXPositionAttribute as CFString, value) == .success {
+                WindowManager.recordAppliedPosition(point, for: member)
+            }
         }
     }
 
@@ -64,7 +67,10 @@ struct TrackedWindow: Equatable {
         var s = size
         guard let value = AXValueCreate(.cgSize, &s) else { return }
         for member in members {
-            AXUIElementSetAttributeValue(member, kAXSizeAttribute as CFString, value)
+            guard WindowManager.shouldApplySize(size, to: member) else { continue }
+            if WindowManager.setAttributeValue(member, kAXSizeAttribute as CFString, value) == .success {
+                WindowManager.recordAppliedSize(size, for: member)
+            }
         }
     }
 
@@ -84,16 +90,16 @@ struct TrackedWindow: Equatable {
         if let app = NSRunningApplication(processIdentifier: pid) {
             app.activate()
         }
-        AXUIElementPerformAction(element, kAXRaiseAction as CFString)
-        AXUIElementSetAttributeValue(element, kAXMainAttribute as CFString, kCFBooleanTrue)
-        AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-        AXUIElementSetAttributeValue(focusElement, kAXMainAttribute as CFString, kCFBooleanTrue)
-        AXUIElementSetAttributeValue(focusElement, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        WindowManager.performAction(element, kAXRaiseAction as CFString)
+        for target in TrackedWindow.unique([element, focusElement]) {
+            WindowManager.setAttributeValue(target, kAXMainAttribute as CFString, kCFBooleanTrue)
+            WindowManager.setAttributeValue(target, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        }
     }
 
     @MainActor
     func raise() {
-        AXUIElementPerformAction(element, kAXRaiseAction as CFString)
+        WindowManager.performAction(element, kAXRaiseAction as CFString)
     }
 
     @MainActor
@@ -104,7 +110,7 @@ struct TrackedWindow: Equatable {
     @MainActor
     func title() -> String? {
         var value: AnyObject?
-        guard AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &value) == .success else {
+        guard WindowManager.copyAttributeValue(element, kAXTitleAttribute as CFString, &value) == .success else {
             return nil
         }
         return value as? String
@@ -125,6 +131,14 @@ struct TrackedWindow: Equatable {
 
 @MainActor
 enum WindowManager {
+    private struct AppliedGeometry {
+        var position: CGPoint?
+        var size: CGSize?
+    }
+
+    private static let appliedGeometryTolerance: CGFloat = 0.5
+    private static var appliedGeometry: [CFHashCode: AppliedGeometry] = [:]
+
     static func allWindows() -> [TrackedWindow] {
         var result: [TrackedWindow] = []
         for app in NSWorkspace.shared.runningApplications {
@@ -133,7 +147,7 @@ enum WindowManager {
             let appRef = AXUIElementCreateApplication(pid)
 
             var windowsValue: AnyObject?
-            guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
+            guard copyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
                 let windows = windowsValue as? [AXUIElement]
             else { continue }
 
@@ -146,7 +160,7 @@ enum WindowManager {
         let appRef = AXUIElementCreateApplication(pid)
 
         var windowsValue: AnyObject?
-        guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
+        guard copyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
             let windows = windowsValue as? [AXUIElement]
         else { return nil }
 
@@ -187,7 +201,7 @@ enum WindowManager {
 
     private static func trackedWindow(_ appRef: AXUIElement, _ attribute: CFString, pid: pid_t) -> TrackedWindow? {
         var value: AnyObject?
-        guard AXUIElementCopyAttributeValue(appRef, attribute, &value) == .success,
+        guard copyAttributeValue(appRef, attribute, &value) == .success,
             CFGetTypeID(value) == AXUIElementGetTypeID()
         else {
             return nil
@@ -208,7 +222,7 @@ enum WindowManager {
             ] as CFArray
 
         var values: CFArray?
-        guard AXUIElementCopyMultipleAttributeValues(element, attrs, .stopOnError, &values) == .success,
+        guard copyMultipleAttributeValues(element, attrs, .stopOnError, &values) == .success,
             let results = values as? [AnyObject], results.count == 4
         else { return false }
 
@@ -227,8 +241,8 @@ enum WindowManager {
         var roleValue: AnyObject?
         var subroleValue: AnyObject?
 
-        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success,
-            AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleValue) == .success
+        guard copyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success,
+            copyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleValue) == .success
         else { return false }
 
         let role = roleValue as? String
@@ -238,7 +252,7 @@ enum WindowManager {
 
     static func canonicalWindowElement(_ element: AXUIElement) -> AXUIElement? {
         var value: AnyObject?
-        guard AXUIElementCopyAttributeValue(element, kAXWindowAttribute as CFString, &value) == .success,
+        guard copyAttributeValue(element, kAXWindowAttribute as CFString, &value) == .success,
             CFGetTypeID(value) == AXUIElementGetTypeID()
         else { return nil }
 
@@ -250,8 +264,8 @@ enum WindowManager {
     static func frame(of element: AXUIElement) -> CGRect? {
         var posValue: AnyObject?
         var sizeValue: AnyObject?
-        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posValue) == .success,
-            AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success
+        guard copyAttributeValue(element, kAXPositionAttribute as CFString, &posValue) == .success,
+            copyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success
         else { return nil }
 
         var pos = CGPoint.zero
@@ -269,25 +283,109 @@ enum WindowManager {
     }
 
     static func screenFrame(for screen: NSScreen) -> CGRect {
-        convertRect(screen.visibleFrame)
+        ScreenGeometry.convertRect(screen.visibleFrame, screens: screenDescriptors())
     }
 
     static func screenRect(for screen: NSScreen) -> CGRect {
-        convertRect(screen.frame)
-    }
-
-    private static func convertRect(_ rect: CGRect) -> CGRect {
-        let primaryHeight = NSScreen.screens.first?.frame.maxY ?? 1080
-        return CGRect(
-            x: rect.origin.x,
-            y: primaryHeight - rect.maxY,
-            width: rect.width,
-            height: rect.height
-        )
+        ScreenGeometry.convertRect(screen.frame, screens: screenDescriptors())
     }
 
     static func displayID(for screen: NSScreen) -> CGDirectDisplayID {
         screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? 0
+    }
+
+    static func screenDescriptors() -> [ScreenDescriptor] {
+        NSScreen.screens.map { screen in
+            ScreenDescriptor(
+                displayID: displayID(for: screen),
+                frame: screen.frame,
+                visibleFrame: screen.visibleFrame,
+                scale: screen.backingScaleFactor
+            )
+        }
+    }
+
+    static func screenTopologySignature() -> String {
+        ScreenGeometry.topologySignature(screenDescriptors())
+    }
+
+    static func invalidateAppliedGeometry(_ window: TrackedWindow) {
+        for member in window.members {
+            invalidateAppliedGeometry(member)
+        }
+    }
+
+    static func invalidateAppliedGeometry(_ element: AXUIElement) {
+        appliedGeometry.removeValue(forKey: elementKey(element))
+    }
+
+    static func copyAttributeValue(
+        _ element: AXUIElement,
+        _ attribute: CFString,
+        _ value: UnsafeMutablePointer<AnyObject?>
+    ) -> AXError {
+        PerformanceTelemetry.recordAXRead()
+        return AXUIElementCopyAttributeValue(element, attribute, value)
+    }
+
+    static func copyMultipleAttributeValues(
+        _ element: AXUIElement,
+        _ attributes: CFArray,
+        _ options: AXCopyMultipleAttributeOptions,
+        _ values: UnsafeMutablePointer<CFArray?>
+    ) -> AXError {
+        PerformanceTelemetry.recordAXRead()
+        return AXUIElementCopyMultipleAttributeValues(element, attributes, options, values)
+    }
+
+    @discardableResult
+    static func setAttributeValue(_ element: AXUIElement, _ attribute: CFString, _ value: CFTypeRef) -> AXError {
+        PerformanceTelemetry.recordAXWrite()
+        return AXUIElementSetAttributeValue(element, attribute, value)
+    }
+
+    @discardableResult
+    static func performAction(_ element: AXUIElement, _ action: CFString) -> AXError {
+        PerformanceTelemetry.recordAXWrite()
+        return AXUIElementPerformAction(element, action)
+    }
+
+    static func shouldApplyPosition(_ position: CGPoint, to element: AXUIElement) -> Bool {
+        guard let current = appliedGeometry[elementKey(element)]?.position else { return true }
+        return !pointsMatch(current, position)
+    }
+
+    static func shouldApplySize(_ size: CGSize, to element: AXUIElement) -> Bool {
+        guard let current = appliedGeometry[elementKey(element)]?.size else { return true }
+        return !sizesMatch(current, size)
+    }
+
+    static func recordAppliedPosition(_ position: CGPoint, for element: AXUIElement) {
+        let key = elementKey(element)
+        var geometry = appliedGeometry[key] ?? AppliedGeometry()
+        geometry.position = position
+        appliedGeometry[key] = geometry
+    }
+
+    static func recordAppliedSize(_ size: CGSize, for element: AXUIElement) {
+        let key = elementKey(element)
+        var geometry = appliedGeometry[key] ?? AppliedGeometry()
+        geometry.size = size
+        appliedGeometry[key] = geometry
+    }
+
+    private static func elementKey(_ element: AXUIElement) -> CFHashCode {
+        CFHash(element)
+    }
+
+    private static func pointsMatch(_ lhs: CGPoint, _ rhs: CGPoint) -> Bool {
+        abs(lhs.x - rhs.x) <= appliedGeometryTolerance
+            && abs(lhs.y - rhs.y) <= appliedGeometryTolerance
+    }
+
+    private static func sizesMatch(_ lhs: CGSize, _ rhs: CGSize) -> Bool {
+        abs(lhs.width - rhs.width) <= appliedGeometryTolerance
+            && abs(lhs.height - rhs.height) <= appliedGeometryTolerance
     }
 }
 

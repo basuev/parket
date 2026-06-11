@@ -12,6 +12,8 @@ package final class WorkspaceManager {
         let windowIndex: Int
     }
 
+    private static let screenChangeDebounceDelay: TimeInterval = 0.25
+    private static let screenChangeMaxAttempts = 8
     private static let focusFollowRetryDelay: TimeInterval = 0.015
     private static let focusFollowMaxAttempts = 5
 
@@ -28,13 +30,15 @@ package final class WorkspaceManager {
     package func bootstrap() {
         rebuildMonitors()
         focusedMonitorIndex = 0
-        let windows = WindowManager.allWindows()
+        let windows = PerformanceTelemetry.measure(.axSnapshot) {
+            WindowManager.allWindows()
+        }
         for window in windows {
             monitorForWindow(window).insertWindow(window)
         }
         if !isTilingPaused {
             for monitor in monitors {
-                monitor.retile()
+                monitor.retile(validate: false)
             }
         }
         StatusBar.shared.update()
@@ -147,12 +151,12 @@ package final class WorkspaceManager {
         guard let i = source.workspaces[source.active].firstIndex(of: focused) else { return }
         let moved = focused.keepingMembers(from: source.workspaces[source.active][i])
         source.workspaces[source.active].remove(at: i)
-        source.retile()
+        source.retile(validate: false)
 
         let targetIndex = (focusedMonitorIndex + offset + monitors.count) % monitors.count
         let target = monitors[targetIndex]
         target.insertWindow(moved)
-        target.retile()
+        target.retile(validate: false)
 
         focusedMonitorIndex = targetIndex
         moved.focus()
@@ -183,6 +187,7 @@ package final class WorkspaceManager {
         guard !isTilingPaused else { return }
         guard let location = locateWindow(pid: pid, element: element) else { return }
         let monitor = monitors[location.monitorIndex]
+        WindowManager.invalidateAppliedGeometry(monitor.workspaces[location.workspaceIndex][location.windowIndex])
         guard monitor.active == location.workspaceIndex else { return }
         monitor.scheduleCorrectiveRetile()
     }
@@ -248,58 +253,69 @@ package final class WorkspaceManager {
     }
 
     package func handleScreenChange() {
+        scheduleScreenChange(signature: WindowManager.screenTopologySignature(), attempt: 0)
+    }
+
+    private func scheduleScreenChange(signature: String, attempt: Int) {
         screenChangeWork?.cancel()
         let work = DispatchWorkItem { [self] in
-            performScreenChange()
+            performStableScreenChange(expectedSignature: signature, attempt: attempt)
         }
         screenChangeWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.screenChangeDebounceDelay, execute: work)
+    }
+
+    private func performStableScreenChange(expectedSignature: String, attempt: Int) {
+        let currentSignature = WindowManager.screenTopologySignature()
+        guard currentSignature == expectedSignature || attempt >= Self.screenChangeMaxAttempts else {
+            scheduleScreenChange(signature: currentSignature, attempt: attempt + 1)
+            return
+        }
+        performScreenChange()
     }
 
     private func performScreenChange() {
-        screenChangeWork = nil
-        let old = Dictionary(uniqueKeysWithValues: monitors.map { ($0.displayID, $0) })
-        let oldPrimaryID = primaryDisplayID()
-        let focusedDisplayID = monitors.isEmpty ? 0 : focusedMonitor.displayID
-        rebuildMonitors()
+        PerformanceTelemetry.measure(.screenChange) {
+            screenChangeWork = nil
+            let old = Dictionary(uniqueKeysWithValues: monitors.map { ($0.displayID, $0) })
+            let focusedDisplayID = monitors.isEmpty ? 0 : focusedMonitor.displayID
+            rebuildMonitors()
 
-        for monitor in monitors {
-            if let existing = old[monitor.displayID] {
-                monitor.copyState(from: existing)
+            guard !monitors.isEmpty else {
+                focusedMonitorIndex = 0
+                StatusBar.shared.update()
+                return
             }
-        }
 
-        let currentIDs = Set(monitors.map { $0.displayID })
-        for (id, oldMonitor) in old where !currentIDs.contains(id) {
-            let target = monitors[0]
-            for ws in oldMonitor.workspaces {
-                for window in ws {
-                    target.workspaces[target.active].insert(window, at: 0)
+            for monitor in monitors {
+                if let existing = old[monitor.displayID] {
+                    monitor.copyState(from: existing)
                 }
             }
-        }
 
-        let newPrimaryID = primaryDisplayID()
+            let currentIDs = Set(monitors.map { $0.displayID })
+            for (id, oldMonitor) in old where !currentIDs.contains(id) {
+                for workspace in oldMonitor.workspaces {
+                    for window in workspace {
+                        monitorForWindow(window).workspaces[0].insert(window, at: 0)
+                    }
+                }
+            }
 
-        if newPrimaryID != oldPrimaryID,
-            let newPrimary = monitors.first(where: { $0.displayID == newPrimaryID }),
-            let oldPrimary = monitors.first(where: { $0.displayID == oldPrimaryID }),
-            newPrimary.workspaces.allSatisfy({ $0.isEmpty })
-        {
-            newPrimary.copyState(from: oldPrimary)
-            oldPrimary.resetState()
-        }
+            if let index = monitors.firstIndex(where: { $0.displayID == focusedDisplayID }) {
+                focusedMonitorIndex = index
+            } else {
+                focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == primaryDisplayID() }) ?? 0
+            }
 
-        if newPrimaryID != oldPrimaryID {
-            focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == newPrimaryID }) ?? 0
-        } else {
-            focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == focusedDisplayID }) ?? 0
-        }
+            if !isTilingPaused {
+                for monitor in monitors {
+                    monitor.retile(validate: true)
+                }
+            }
 
-        for monitor in monitors {
-            monitor.retile()
+            StatusBar.shared.update()
         }
-        StatusBar.shared.update()
     }
 
     package func applyCurrentConfig() {
@@ -307,7 +323,7 @@ package final class WorkspaceManager {
         for monitor in monitors {
             monitor.resizeWorkspaces(to: count)
             if !isTilingPaused {
-                monitor.retile()
+                monitor.retile(validate: true)
             }
         }
         StatusBar.shared.update()
@@ -356,7 +372,17 @@ package final class WorkspaceManager {
                     screen: screen
                 )
             }
-            .sorted { $0.screen.frame.origin.x < $1.screen.frame.origin.x }
+            .sorted { lhs, rhs in
+                let lhsFrame = lhs.screen.frame
+                let rhsFrame = rhs.screen.frame
+                if abs(lhsFrame.origin.y - rhsFrame.origin.y) > 0.5 {
+                    return lhsFrame.origin.y > rhsFrame.origin.y
+                }
+                if abs(lhsFrame.origin.x - rhsFrame.origin.x) > 0.5 {
+                    return lhsFrame.origin.x < rhsFrame.origin.x
+                }
+                return lhs.displayID < rhs.displayID
+            }
     }
 
     private func primaryDisplayID() -> CGDirectDisplayID {
@@ -425,6 +451,10 @@ package final class WorkspaceManager {
     }
 
     private func monitorForWindow(_ window: TrackedWindow) -> Monitor {
+        guard !monitors.isEmpty else {
+            rebuildMonitors()
+            return monitors[0]
+        }
         guard monitors.count > 1, let frame = window.getFrame() else {
             return monitors[0]
         }

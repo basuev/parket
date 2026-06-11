@@ -56,6 +56,13 @@ package final class ParketRuntime {
             "monitor_count: \(ws.monitors.count)",
         ]
         lines.append(contentsOf: Hotkeys.shared.diagnosticLines())
+        lines.append("screen_topology: \(WindowManager.screenTopologySignature())")
+        for (index, screen) in WindowManager.screenDescriptors().enumerated() {
+            lines.append(
+                "screen_\(index): id=\(screen.displayID) frame=\(format(screen.frame)) visible=\(format(screen.visibleFrame)) scale=\(String(format: "%.2f", Double(screen.scale)))"
+            )
+        }
+        lines.append(contentsOf: PerformanceTelemetry.diagnosticLines())
 
         if let startupIssue {
             lines.append("startup_issue: \(startupIssue)")
@@ -70,6 +77,14 @@ package final class ParketRuntime {
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    private func format(_ rect: CGRect) -> String {
+        "(\(format(rect.origin.x)),\(format(rect.origin.y)),\(format(rect.width)),\(format(rect.height)))"
+    }
+
+    private func format(_ value: CGFloat) -> String {
+        String(format: "%.1f", Double(value))
     }
 
     package func reloadConfig() {
