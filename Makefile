@@ -42,7 +42,8 @@ dist: build
 	cp Info.plist $(BUNDLE)/Contents/
 	cp $(BUILD_DIR)/$(APP_NAME) $(BUNDLE)/Contents/MacOS/
 	codesign --force --sign "$(CODESIGN_IDENTITY)" --requirements '$(CODESIGN_REQUIREMENTS)' $(BUNDLE)
-	zip -r $(APP_NAME).zip $(BUNDLE)
+	rm -f $(APP_NAME).zip
+	ditto -c -k --sequesterRsrc --keepParent $(BUNDLE) $(APP_NAME).zip
 	@shasum -a 256 $(APP_NAME).zip
 
 verify-dist:

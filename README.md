@@ -13,8 +13,7 @@ inspired by [dwm](https://dwm.suckless.org/) and [AeroSpace](https://github.com/
 ## install
 
 ```bash
-brew tap basuev/parket
-brew install --cask parket
+brew install --cask basuev/parket/parket
 ```
 
 or build from source:
@@ -25,6 +24,8 @@ open /Applications/parket.app
 ```
 
 parket opens a permission window on first launch. grant Accessibility, then use Recheck from the window or Recheck Accessibility from the menubar.
+
+the GitHub release zip is ad-hoc signed for now. Homebrew is the recommended install path.
 
 ## requirements
 
@@ -99,7 +100,8 @@ the menubar menu also includes "Pause Tiling", "Retile Now", "Pause and Restore 
 ## update
 
 ```bash
-brew upgrade --cask parket
+brew update
+brew upgrade --cask basuev/parket/parket
 ```
 
 or from source:
@@ -113,7 +115,7 @@ replaces only the binary - permissions persist.
 ## uninstall
 
 ```bash
-brew uninstall --cask parket
+brew uninstall --cask basuev/parket/parket
 ```
 
 or:
