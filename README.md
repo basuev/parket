@@ -12,13 +12,13 @@ inspired by [dwm](https://dwm.suckless.org/) and [AeroSpace](https://github.com/
 
 ## install
 
-```bash
+```fish
 brew install --cask basuev/parket/parket
 ```
 
 or build from source:
 
-```bash
+```fish
 make install
 open /Applications/parket.app
 ```
@@ -99,14 +99,17 @@ the menubar menu also includes "Pause Tiling", "Retile Now", "Pause and Restore 
 
 ## update
 
-```bash
+```fish
 brew update
 brew upgrade --cask basuev/parket/parket
 ```
 
-or from source:
+Homebrew installs made with older cask metadata can still run the old uninstall step during their first upgrade. That may recreate `/Applications/parket.app` and require granting Accessibility again. Current cask metadata preserves the app bundle for future installs and updates.
 
-```bash
+or update from source:
+
+```fish
+git pull
 make install
 ```
 
@@ -114,13 +117,14 @@ replaces only the binary - permissions persist.
 
 ## uninstall
 
-```bash
+```fish
 brew uninstall --cask basuev/parket/parket
+rm -rf /Applications/parket.app
 ```
 
 or:
 
-```bash
+```fish
 make uninstall
 ```
 
