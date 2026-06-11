@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.3
 import PackageDescription
 
 let package = Package(
@@ -19,10 +19,17 @@ let package = Package(
             dependencies: ["ParketCore"],
             path: "Entry"
         ),
-        .executableTarget(
-            name: "parket-tests",
+        .testTarget(
+            name: "ParketCoreTests",
             dependencies: ["ParketCore"],
-            path: "Tests"
+            path: "Tests",
+            exclude: ["Fixtures", "Smoke"]
         ),
-    ]
+        .executableTarget(
+            name: "parket-perf",
+            dependencies: ["ParketCore"],
+            path: "Benchmarks/TilerPerformance"
+        ),
+    ],
+    swiftLanguageModes: [.v6]
 )

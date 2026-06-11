@@ -6,16 +6,24 @@ BUNDLE_ID = com.parket.app
 CODESIGN_IDENTITY ?= -
 CODESIGN_REQUIREMENTS ?= =designated => identifier "$(BUNDLE_ID)"
 
-.PHONY: build test check install clean dist benchmark
+.PHONY: build test fmt lint policy check install clean dist verify-dist notarize fixture-app smoke-local coverage perf benchmark
 
 build:
 	swift build --product parket -c release
 
 test:
-	swift build --product parket-tests
-	.build/debug/parket-tests
+	swift test --enable-swift-testing
 
-check: test build
+fmt:
+	swift format --recursive --in-place Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift Package.swift
+
+lint:
+	swift format lint --recursive --strict Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift Package.swift
+
+policy:
+	bash scripts/policy-check.sh
+
+check: lint policy test build
 
 install: build
 	@if [ ! -d "$(INSTALL_DIR)" ]; then \
@@ -37,9 +45,28 @@ dist: build
 	zip -r $(APP_NAME).zip $(BUNDLE)
 	@shasum -a 256 $(APP_NAME).zip
 
+verify-dist:
+	bash scripts/verify-dist.sh
+
+notarize:
+	bash scripts/notarize.sh
+
+fixture-app:
+	bash scripts/build-fixture-app.sh
+
+smoke-local:
+	bash scripts/smoke-local.sh
+
 clean:
 	swift package clean
 	rm -rf $(BUNDLE) $(APP_NAME).zip
+
+coverage:
+	swift test --enable-swift-testing --enable-code-coverage
+
+perf:
+	swift build --product parket-perf -c release
+	.build/release/parket-perf
 
 benchmark:
 	bash scripts/benchmark.sh run
