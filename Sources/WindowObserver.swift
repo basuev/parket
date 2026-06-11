@@ -21,42 +21,50 @@ package final class WindowObserver {
     private static let retryInterval: TimeInterval = 0.05
 
     private var observers: [pid_t: AXObserver] = [:]
+    private var isStarted = false
 
     private init() {}
 
     package func start() {
-        let nc = NSWorkspace.shared.notificationCenter
+        if !isStarted {
+            isStarted = true
+            let nc = NSWorkspace.shared.notificationCenter
 
-        nc.addObserver(
-            forName: NSWorkspace.didLaunchApplicationNotification,
-            object: nil, queue: .main
-        ) { note in
-            let notification = WorkspaceNotification(value: note)
-            MainActor.assumeIsolated {
-                WindowObserver.shared.handleLaunchNotification(notification.value)
+            nc.addObserver(
+                forName: NSWorkspace.didLaunchApplicationNotification,
+                object: nil, queue: .main
+            ) { note in
+                let notification = WorkspaceNotification(value: note)
+                MainActor.assumeIsolated {
+                    WindowObserver.shared.handleLaunchNotification(notification.value)
+                }
+            }
+
+            nc.addObserver(
+                forName: NSWorkspace.didTerminateApplicationNotification,
+                object: nil, queue: .main
+            ) { note in
+                let notification = WorkspaceNotification(value: note)
+                MainActor.assumeIsolated {
+                    WindowObserver.shared.handleTerminateNotification(notification.value)
+                }
+            }
+
+            nc.addObserver(
+                forName: NSWorkspace.didActivateApplicationNotification,
+                object: nil, queue: .main
+            ) { note in
+                let notification = WorkspaceNotification(value: note)
+                MainActor.assumeIsolated {
+                    WindowObserver.shared.handleActivateNotification(notification.value)
+                }
             }
         }
 
-        nc.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification,
-            object: nil, queue: .main
-        ) { note in
-            let notification = WorkspaceNotification(value: note)
-            MainActor.assumeIsolated {
-                WindowObserver.shared.handleTerminateNotification(notification.value)
-            }
-        }
+        observeRunningApplications()
+    }
 
-        nc.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil, queue: .main
-        ) { note in
-            let notification = WorkspaceNotification(value: note)
-            MainActor.assumeIsolated {
-                WindowObserver.shared.handleActivateNotification(notification.value)
-            }
-        }
-
+    private func observeRunningApplications() {
         for app in NSWorkspace.shared.runningApplications {
             guard app.activationPolicy == .regular else { continue }
             let pid = app.processIdentifier
@@ -68,6 +76,7 @@ package final class WindowObserver {
     }
 
     private func handleLaunchNotification(_ note: Notification) {
+        guard ParketRuntime.shared.isRunning else { return }
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
             app.activationPolicy == .regular
         else { return }
@@ -75,6 +84,7 @@ package final class WindowObserver {
     }
 
     private func handleTerminateNotification(_ note: Notification) {
+        guard ParketRuntime.shared.isRunning else { return }
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
         let pid = app.processIdentifier
         WorkspaceManager.shared.removeWindow(pid: pid)
@@ -82,6 +92,7 @@ package final class WindowObserver {
     }
 
     private func handleActivateNotification(_ note: Notification) {
+        guard ParketRuntime.shared.isRunning else { return }
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
             app.activationPolicy == .regular
         else { return }
@@ -139,6 +150,7 @@ package final class WindowObserver {
     }
 
     private func handleAXNotification(element: AXUIElement, notification: CFString) {
+        guard ParketRuntime.shared.isRunning else { return }
         let notif = notification as String
 
         if notif == kAXWindowCreatedNotification {

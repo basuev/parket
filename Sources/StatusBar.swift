@@ -10,10 +10,9 @@ package final class StatusBar: NSObject {
         title: "Permissions", action: #selector(showPermissions), keyEquivalent: "")
     private let accessibilityItem = NSMenuItem(
         title: "Accessibility", action: #selector(openAccessibilitySettings), keyEquivalent: "")
-    private let inputMonitoringItem = NSMenuItem(
-        title: "Input Monitoring", action: #selector(openInputMonitoringSettings), keyEquivalent: "")
     private let recheckPermissionsItem = NSMenuItem(
         title: "Recheck Permissions", action: #selector(recheckPermissions), keyEquivalent: "")
+    private let hotkeysItem = NSMenuItem(title: "Hotkeys", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "Pause Tiling", action: #selector(togglePause), keyEquivalent: "p")
     private let retileItem = NSMenuItem(title: "Retile Now", action: #selector(retileNow), keyEquivalent: "t")
     private let restoreItem = NSMenuItem(
@@ -36,7 +35,6 @@ package final class StatusBar: NSObject {
         for item in [
             permissionsItem,
             accessibilityItem,
-            inputMonitoringItem,
             recheckPermissionsItem,
             pauseItem,
             retileItem,
@@ -51,8 +49,8 @@ package final class StatusBar: NSObject {
 
         menu.addItem(permissionsItem)
         menu.addItem(accessibilityItem)
-        menu.addItem(inputMonitoringItem)
         menu.addItem(recheckPermissionsItem)
+        menu.addItem(hotkeysItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(pauseItem)
         menu.addItem(retileItem)
@@ -71,14 +69,8 @@ package final class StatusBar: NSObject {
     }
 
     @objc private func openAccessibilitySettings() {
-        Permissions.request(.accessibility)
-        Permissions.openSettings(.accessibility)
-        ParketRuntime.shared.refreshPermissions(prompt: false)
-    }
-
-    @objc private func openInputMonitoringSettings() {
-        Permissions.request(.inputMonitoring)
-        Permissions.openSettings(.inputMonitoring)
+        Permissions.requestAccessibility()
+        Permissions.openAccessibilitySettings()
         ParketRuntime.shared.refreshPermissions(prompt: false)
     }
 
@@ -99,7 +91,7 @@ package final class StatusBar: NSObject {
     }
 
     @objc private func reloadConfig() {
-        WorkspaceManager.shared.reloadConfig()
+        ParketRuntime.shared.reloadConfig()
     }
 
     @objc private func openConfig() {
@@ -110,9 +102,16 @@ package final class StatusBar: NSObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(ParketRuntime.shared.diagnosticReport(), forType: .string)
+        copyDiagnosticsItem.title = "Diagnostic Report Copied"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            self.copyDiagnosticsItem.title = "Copy Diagnostic Report"
+        }
     }
 
     @objc private func quit() {
+        if ParketRuntime.shared.permissions.isReady {
+            WorkspaceManager.shared.restoreAllWindows()
+        }
         NSApplication.shared.terminate(nil)
     }
 
@@ -128,7 +127,7 @@ package final class StatusBar: NSObject {
         let fontSize = font.pointSize
         let runtime = ParketRuntime.shared
 
-        if !runtime.permissions.isReady || runtime.startupIssue != nil {
+        if !runtime.permissions.isReady {
             let codes = runtime.permissions.missingCodes
             if codes.isEmpty {
                 views.append(LayoutIndicatorView(text: "ERR", fontSize: fontSize))
@@ -139,6 +138,16 @@ package final class StatusBar: NSObject {
             }
             applyViews(views)
             return
+        }
+
+        if runtime.startupIssue != nil {
+            views.append(LayoutIndicatorView(text: "ERR", fontSize: fontSize))
+            applyViews(views)
+            return
+        }
+
+        if Hotkeys.shared.status == .degraded {
+            views.append(LayoutIndicatorView(text: "KEY!", fontSize: fontSize))
         }
 
         if ws.isTilingPaused {
@@ -191,12 +200,28 @@ package final class StatusBar: NSObject {
             ? "Permissions: Granted"
             : "Permissions: Missing \(missing)"
         accessibilityItem.title = "Accessibility: \(permissions.accessibility ? "Granted" : "Missing")"
-        inputMonitoringItem.title = "Input Monitoring: \(permissions.inputMonitoring ? "Granted" : "Missing")"
+        hotkeysItem.title = hotkeysTitle()
+        hotkeysItem.isEnabled = false
 
         pauseItem.state = ws.isTilingPaused ? .on : .off
+        pauseItem.isEnabled = runtime.isRunning
         retileItem.isEnabled = runtime.isRunning
         restoreItem.isEnabled = runtime.isRunning
-        reloadItem.isEnabled = runtime.isRunning
+        reloadItem.isEnabled = true
+        openConfigItem.isEnabled = true
+        copyDiagnosticsItem.isEnabled = true
+    }
+
+    private func hotkeysTitle() -> String {
+        let hotkeys = Hotkeys.shared
+        switch hotkeys.status {
+        case .stopped:
+            return "Hotkeys: Stopped"
+        case .running:
+            return "Hotkeys: Running"
+        case .degraded:
+            return "Hotkeys: Degraded (\(hotkeys.issueCount) failed)"
+        }
     }
 
     private func applyViews(_ views: [NSView]) {
@@ -282,6 +307,8 @@ private struct StatusState: Equatable {
     let permissions: PermissionSnapshot
     let startupIssue: String?
     let runtimeRunning: Bool
+    let hotkeyStatus: HotkeyStatus
+    let hotkeyIssueCount: Int
     let tilingPaused: Bool
     let monitorCount: Int
     let focusedMonitorIndex: Int
@@ -298,6 +325,8 @@ private struct StatusState: Equatable {
                 permissions: runtime.permissions,
                 startupIssue: runtime.startupIssue,
                 runtimeRunning: runtime.isRunning,
+                hotkeyStatus: Hotkeys.shared.status,
+                hotkeyIssueCount: Hotkeys.shared.issueCount,
                 tilingPaused: ws.isTilingPaused,
                 monitorCount: 0, focusedMonitorIndex: 0, activeWorkspace: 0,
                 activeLayout: .tile, occupiedWorkspaces: [], activeWindowCount: 0
@@ -309,6 +338,8 @@ private struct StatusState: Equatable {
             permissions: runtime.permissions,
             startupIssue: runtime.startupIssue,
             runtimeRunning: runtime.isRunning,
+            hotkeyStatus: Hotkeys.shared.status,
+            hotkeyIssueCount: Hotkeys.shared.issueCount,
             tilingPaused: ws.isTilingPaused,
             monitorCount: ws.monitors.count,
             focusedMonitorIndex: ws.focusedMonitorIndex,

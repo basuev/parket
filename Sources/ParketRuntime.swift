@@ -15,23 +15,18 @@ package final class ParketRuntime {
     package func start() {
         Config.load()
         _ = StatusBar.shared
-        refreshPermissions(prompt: true)
+        refreshPermissions(prompt: false)
     }
 
     package func refreshPermissions(prompt: Bool) {
         startupIssue = nil
-        permissions = Permissions.snapshot(
-            promptAccessibility: prompt,
-            promptInputMonitoring: prompt
-        )
+        permissions = Permissions.snapshot(promptAccessibility: prompt)
 
         if permissions.isReady {
-            if startServices() {
-                PermissionWindowController.shared.closeWindow()
-            } else {
-                PermissionWindowController.shared.show(snapshot: permissions, startupIssue: startupIssue)
-            }
+            startServices()
+            PermissionWindowController.shared.closeWindow()
         } else {
+            enterWaitingState()
             PermissionWindowController.shared.show(snapshot: permissions, startupIssue: nil)
         }
 
@@ -54,14 +49,13 @@ package final class ParketRuntime {
             "bundle_id: \(bundleID)",
             "macos: \(version)",
             "accessibility: \(permissions.accessibility ? "granted" : "missing")",
-            "input_monitoring: \(permissions.inputMonitoring ? "granted" : "missing")",
             "runtime: \(isRunning ? "running" : "waiting")",
-            "hotkeys: \(Hotkeys.shared.isRunning ? "running" : "stopped")",
             "tiling: \(ws.isTilingPaused ? "paused" : "enabled")",
             "config_path: \(Config.path)",
             "workspace_count: \(Config.shared.workspaceCount)",
             "monitor_count: \(ws.monitors.count)",
         ]
+        lines.append(contentsOf: Hotkeys.shared.diagnosticLines())
 
         if let startupIssue {
             lines.append("startup_issue: \(startupIssue)")
@@ -78,20 +72,30 @@ package final class ParketRuntime {
         return lines.joined(separator: "\n")
     }
 
-    private func startServices() -> Bool {
-        guard !isRunning else { return true }
-
-        guard Hotkeys.shared.start() else {
-            startupIssue = "Hotkeys could not start. Recheck Input Monitoring or restart parket."
-            return false
+    package func reloadConfig() {
+        Config.load()
+        if isRunning {
+            WorkspaceManager.shared.applyCurrentConfig()
+            Hotkeys.shared.reload()
         }
+        StatusBar.shared.update()
+        fputs("parket: config reloaded\n", stderr)
+    }
+
+    private func startServices() {
+        guard !isRunning else { return }
 
         WorkspaceManager.shared.bootstrap()
         WindowObserver.shared.start()
         registerScreenObserver()
+        Hotkeys.shared.start()
         isRunning = true
         fputs("parket: running\n", stderr)
-        return true
+    }
+
+    private func enterWaitingState() {
+        Hotkeys.shared.stop()
+        isRunning = false
     }
 
     private func registerScreenObserver() {
@@ -102,7 +106,9 @@ package final class ParketRuntime {
             queue: .main
         ) { _ in
             MainActor.assumeIsolated {
-                WorkspaceManager.shared.handleScreenChange()
+                if ParketRuntime.shared.isRunning {
+                    WorkspaceManager.shared.handleScreenChange()
+                }
             }
         }
     }

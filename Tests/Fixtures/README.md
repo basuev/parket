@@ -14,4 +14,4 @@ Run the local smoke scaffold with:
 make smoke-local
 ```
 
-The smoke path is intentionally separate from `make check` because it needs Accessibility, Input Monitoring, and a foreground macOS GUI session.
+The smoke path is intentionally separate from `make check` because it needs Accessibility and a foreground macOS GUI session.

@@ -58,8 +58,8 @@ func intersectsVisibleScreen(_ frame: CGRect, visibleFrames: [CGRect]) -> Bool {
     visibleFrames.contains { !$0.intersection(frame).isNull }
 }
 
-guard AXIsProcessTrusted(), CGPreflightListenEventAccess() else {
-    fail("Accessibility and Input Monitoring are required")
+guard AXIsProcessTrusted() else {
+    fail("Accessibility is required")
 }
 
 guard

@@ -24,13 +24,12 @@ make install
 open /Applications/parket.app
 ```
 
-parket opens a permission window on first launch. grant Accessibility and Input Monitoring, then use Recheck Permissions from the window or menubar.
+parket opens a permission window on first launch. grant Accessibility, then use Recheck Permissions from the window or menubar.
 
 ## requirements
 
 - macOS 14+, Apple Silicon
 - accessibility permission
-- input monitoring permission
 
 ## features
 
@@ -42,7 +41,7 @@ parket opens a permission window on first launch. grant Accessibility and Input 
 - **multi-monitor** - per-display workspaces, each monitor has its own workspace set
 - **app switcher follow** - command+tab to a hidden workspace window opens that workspace
 - **crash safety** - all windows restore on exit
-- **permission onboarding** - menubar and permission window show Accessibility and Input Monitoring state
+- **permission onboarding** - menubar and permission window show Accessibility state
 - **escape hatches** - pause tiling, retile now, restore all windows, open config, copy diagnostics
 
 ## keybindings

@@ -6,7 +6,6 @@ Requirements:
 
 - Apple Silicon Mac.
 - Current terminal has Accessibility permission.
-- Current terminal has Input Monitoring permission.
 - No other window manager is active.
 - Prefer a dedicated test user account.
 

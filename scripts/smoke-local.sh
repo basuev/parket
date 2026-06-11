@@ -5,8 +5,8 @@ make build
 bundle=$(bash scripts/build-fixture-app.sh)
 check_output=$(mktemp "${TMPDIR:-/tmp}/parket-smoke.XXXXXX")
 
-if ! swift -e 'import ApplicationServices; import CoreGraphics; import Darwin; exit(AXIsProcessTrusted() && CGPreflightListenEventAccess() ? 0 : 1)'; then
-    echo "smoke-local requires Accessibility and Input Monitoring for the current terminal" >&2
+if ! swift -e 'import ApplicationServices; import Darwin; exit(AXIsProcessTrusted() ? 0 : 1)'; then
+    echo "smoke-local requires Accessibility for the current terminal" >&2
     exit 1
 fi
 

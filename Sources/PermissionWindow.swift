@@ -6,15 +6,14 @@ package final class PermissionWindowController: NSWindowController {
 
     private let titleLabel = PermissionWindowController.label("parket needs permissions", size: 17, weight: .semibold)
     private let detailsLabel = PermissionWindowController.wrappingLabel(
-        "Grant both permissions, then use Recheck Permissions. parket starts tiling only after both are granted."
+        "Grant Accessibility, then use Recheck Permissions. parket starts tiling only after Accessibility is granted."
     )
     private let accessibilityState = PermissionWindowController.label("", size: 13, weight: .regular)
-    private let inputMonitoringState = PermissionWindowController.label("", size: 13, weight: .regular)
     private let startupIssueLabel = PermissionWindowController.wrappingLabel("")
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 260),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 220),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -39,8 +38,6 @@ package final class PermissionWindowController: NSWindowController {
     package func update(snapshot: PermissionSnapshot, startupIssue: String?) {
         accessibilityState.stringValue = Self.stateText(snapshot.accessibility)
         accessibilityState.textColor = Self.stateColor(snapshot.accessibility)
-        inputMonitoringState.stringValue = Self.stateText(snapshot.inputMonitoring)
-        inputMonitoringState.textColor = Self.stateColor(snapshot.inputMonitoring)
         startupIssueLabel.stringValue = startupIssue ?? ""
         startupIssueLabel.isHidden = startupIssue == nil
     }
@@ -55,11 +52,6 @@ package final class PermissionWindowController: NSWindowController {
             target: self,
             action: #selector(openAccessibilitySettings)
         )
-        let openInputMonitoring = NSButton(
-            title: "Open Input Monitoring",
-            target: self,
-            action: #selector(openInputMonitoringSettings)
-        )
         let recheck = NSButton(
             title: "Recheck Permissions",
             target: self,
@@ -68,8 +60,7 @@ package final class PermissionWindowController: NSWindowController {
         recheck.keyEquivalent = "\r"
 
         let rows = NSStackView(views: [
-            permissionRow(title: "Accessibility", state: accessibilityState, button: openAccessibility),
-            permissionRow(title: "Input Monitoring", state: inputMonitoringState, button: openInputMonitoring),
+            permissionRow(title: "Accessibility", state: accessibilityState, button: openAccessibility)
         ])
         rows.orientation = .vertical
         rows.spacing = 10
@@ -111,14 +102,8 @@ package final class PermissionWindowController: NSWindowController {
     }
 
     @objc private func openAccessibilitySettings() {
-        Permissions.request(.accessibility)
-        Permissions.openSettings(.accessibility)
-        ParketRuntime.shared.refreshPermissions(prompt: false)
-    }
-
-    @objc private func openInputMonitoringSettings() {
-        Permissions.request(.inputMonitoring)
-        Permissions.openSettings(.inputMonitoring)
+        Permissions.requestAccessibility()
+        Permissions.openAccessibilitySettings()
         ParketRuntime.shared.refreshPermissions(prompt: false)
     }
 

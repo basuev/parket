@@ -1,5 +1,11 @@
 import Cocoa
 
+package enum HotkeyModifier: String, Equatable {
+    case option
+    case control
+    case command
+}
+
 package struct Binding {
     let key: UInt16
     let shift: Bool
@@ -88,10 +94,33 @@ package enum Key {
         "slash": Key.slash, "backslash": Key.backslash, "grave": Key.grave,
     ]
 
+    static let namesByCode: [UInt16: String] = [
+        Key.return: "return", Key.tab: "tab", Key.space: "space",
+        Key.escape: "escape", Key.delete: "delete",
+        Key.a: "a", Key.b: "b", Key.c: "c", Key.d: "d", Key.e: "e",
+        Key.f: "f", Key.g: "g", Key.h: "h", Key.i: "i", Key.j: "j",
+        Key.k: "k", Key.l: "l", Key.m: "m", Key.n: "n", Key.o: "o",
+        Key.p: "p", Key.q: "q", Key.r: "r", Key.s: "s", Key.t: "t",
+        Key.u: "u", Key.v: "v", Key.w: "w", Key.x: "x", Key.y: "y",
+        Key.z: "z",
+        Key.zero: "0", Key.one: "1", Key.two: "2", Key.three: "3",
+        Key.four: "4", Key.five: "5", Key.six: "6", Key.seven: "7",
+        Key.eight: "8", Key.nine: "9",
+        Key.minus: "minus", Key.equal: "equal",
+        Key.leftBracket: "leftbracket", Key.rightBracket: "rightbracket",
+        Key.semicolon: "semicolon", Key.quote: "quote",
+        Key.comma: "comma", Key.period: "period",
+        Key.slash: "slash", Key.backslash: "backslash", Key.grave: "grave",
+    ]
+
     static let numberKeys: [UInt16] = [
         Key.one, Key.two, Key.three, Key.four, Key.five,
         Key.six, Key.seven, Key.eight, Key.nine,
     ]
+
+    static func name(for code: UInt16) -> String {
+        namesByCode[code] ?? "keycode_\(code)"
+    }
 }
 
 package struct BuiltinBindings {
@@ -120,7 +149,7 @@ package struct Config {
 
     package var workspaceCount: Int = defaultWorkspaceCount
     package var masterRatio: CGFloat = defaultMasterRatio
-    package var modifier: CGEventFlags = .maskAlternate
+    package var modifier: HotkeyModifier = .option
     package var customBindings: [Binding] = [
         Binding(key: Key.return, shift: true, command: "open -n -a Terminal")
     ]
@@ -171,9 +200,9 @@ package struct Config {
 
         if let mod = toml["modifier"] as? String {
             switch mod {
-            case "option": config.modifier = .maskAlternate
-            case "control": config.modifier = .maskControl
-            case "command": config.modifier = .maskCommand
+            case "option": config.modifier = .option
+            case "control": config.modifier = .control
+            case "command": config.modifier = .command
             default: report("unknown modifier '\(mod)', using option")
             }
         }

@@ -1,147 +1,228 @@
-import ApplicationServices
+import Carbon
 import Cocoa
 
-private struct HotkeyCallbackEvent: @unchecked Sendable {
-    let value: CGEvent
-}
-
-private struct HotkeyCallbackResult: @unchecked Sendable {
-    let value: Unmanaged<CGEvent>?
+package enum HotkeyStatus: String, Equatable {
+    case stopped
+    case running
+    case degraded
 }
 
 @MainActor
 package final class Hotkeys {
     package static let shared = Hotkeys()
 
-    private var tap: CFMachPort?
-    package var isRunning: Bool { tap != nil }
+    private static let signature = OSType(0x7072_6b74)
+
+    private var handler: EventHandlerRef?
+    private var registered: [EventHotKeyRef] = []
+    private var actions: [UInt32: HotkeyAction] = [:]
+
+    package private(set) var status: HotkeyStatus = .stopped
+    package private(set) var skippedBindings: [SkippedHotkey] = []
+    package private(set) var failedRegistrations: [FailedHotkeyRegistration] = []
+    package private(set) var handlerInstallStatus: Int32?
+
+    package var isRunning: Bool { status != .stopped }
+    package var issueCount: Int {
+        skippedBindings.count + failedRegistrations.count + (handlerInstallStatus == nil ? 0 : 1)
+    }
 
     private init() {}
 
-    package func start() -> Bool {
-        guard tap == nil else { return true }
+    package func start() {
+        guard status == .stopped else { return }
+        registerCurrentConfig()
+    }
 
-        let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
+    package func reload() {
+        stop()
+        registerCurrentConfig()
+    }
 
-        guard
-            let tap = CGEvent.tapCreate(
-                tap: .cgSessionEventTap,
-                place: .headInsertEventTap,
-                options: .defaultTap,
-                eventsOfInterest: mask,
-                callback: Hotkeys.callback,
-                userInfo: nil
+    package func stop() {
+        for ref in registered {
+            UnregisterEventHotKey(ref)
+        }
+        registered.removeAll()
+        actions.removeAll()
+        if let handler {
+            RemoveEventHandler(handler)
+        }
+        handler = nil
+        status = .stopped
+        skippedBindings = []
+        failedRegistrations = []
+        handlerInstallStatus = nil
+    }
+
+    package func diagnosticLines() -> [String] {
+        var lines: [String] = [
+            "hotkeys: \(status.rawValue)",
+            "hotkey_issue_count: \(issueCount)",
+        ]
+
+        if let handlerInstallStatus {
+            lines.append("hotkey_backend_status: \(handlerInstallStatus)")
+        }
+
+        for skipped in skippedBindings {
+            let kept = skipped.keptLabel.map { " kept=\($0)" } ?? ""
+            lines.append(
+                "hotkey_skipped: \(skipped.skippedLabel) \(skipped.chord.diagnosticText) reason=\(skipped.reason.rawValue)\(kept)"
             )
-        else {
-            fputs("parket: failed to create event tap (check Input Monitoring permission)\n", stderr)
-            return false
         }
 
-        self.tap = tap
-        let source = CFMachPortCreateRunLoopSource(nil, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        return true
+        for failure in failedRegistrations {
+            lines.append(
+                "hotkey_failed: \(failure.label) \(failure.chord.diagnosticText) osstatus=\(failure.osStatus)"
+            )
+        }
+
+        return lines
     }
 
-    private static let callback: CGEventTapCallBack = { _, type, event, _ in
-        let callbackEvent = HotkeyCallbackEvent(value: event)
-        let result: HotkeyCallbackResult = MainActor.assumeIsolated {
-            HotkeyCallbackResult(value: handle(type: type, event: callbackEvent.value))
+    private func registerCurrentConfig() {
+        let plan = HotkeyPlanner.plan(config: Config.shared)
+        skippedBindings = plan.skipped
+        failedRegistrations = []
+        handlerInstallStatus = nil
+
+        let installStatus = installHandler()
+        guard installStatus == noErr else {
+            handlerInstallStatus = installStatus
+            status = .degraded
+            return
         }
-        return result.value
+
+        for registration in plan.registrations {
+            var ref: EventHotKeyRef?
+            let hotKeyID = EventHotKeyID(signature: Self.signature, id: registration.id)
+            let osStatus = RegisterEventHotKey(
+                UInt32(registration.chord.key),
+                registration.chord.carbonModifiers,
+                hotKeyID,
+                GetApplicationEventTarget(),
+                UInt32(kEventHotKeyExclusive),
+                &ref
+            )
+
+            if osStatus == noErr, let ref {
+                registered.append(ref)
+                actions[registration.id] = registration.action
+            } else {
+                failedRegistrations.append(
+                    FailedHotkeyRegistration(
+                        chord: registration.chord,
+                        label: registration.diagnosticLabel,
+                        osStatus: osStatus
+                    )
+                )
+            }
+        }
+
+        if issueCount > 0 || registered.isEmpty {
+            status = .degraded
+        } else {
+            status = .running
+        }
     }
 
-    private static func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap = Hotkeys.shared.tap {
-                CGEvent.tapEnable(tap: tap, enable: true)
+    private func installHandler() -> Int32 {
+        guard handler == nil else { return noErr }
+        var eventSpec = EventTypeSpec(
+            eventClass: UInt32(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        return InstallEventHandler(
+            GetApplicationEventTarget(),
+            Self.carbonCallback,
+            1,
+            &eventSpec,
+            nil,
+            &handler
+        )
+    }
+
+    private static let carbonCallback: EventHandlerUPP = { _, event, _ in
+        guard let event else { return noErr }
+
+        var hotKeyID = EventHotKeyID()
+        let status = withUnsafeMutablePointer(to: &hotKeyID) { pointer in
+            GetEventParameter(
+                event,
+                UInt32(kEventParamDirectObject),
+                UInt32(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                pointer
+            )
+        }
+        guard status == noErr else { return status }
+
+        let id = hotKeyID.id
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                Hotkeys.shared.perform(id: id)
             }
-            return Unmanaged.passRetained(event)
         }
+        return noErr
+    }
 
-        let flags = event.flags
-        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+    private func perform(id: UInt32) {
+        guard let action = actions[id] else { return }
+        perform(action)
+    }
 
-        let config = Config.shared
-        if config.modifier == .maskCommand && keyCode == Key.tab && flags.contains(.maskCommand) {
-            return Unmanaged.passRetained(event)
+    private func perform(_ action: HotkeyAction) {
+        switch action {
+        case .switchWorkspace(let index):
+            WorkspaceManager.shared.switchTo(index)
+        case .moveWorkspace(let index):
+            WorkspaceManager.shared.moveActiveWindowTo(index)
+        case .focusMonitor(let offset):
+            WorkspaceManager.shared.focusMonitor(offset: offset)
+        case .moveWindowToMonitor(let offset):
+            WorkspaceManager.shared.moveWindowToMonitor(offset: offset)
+        case .switchToLastWorkspace:
+            WorkspaceManager.shared.switchToLast()
+        case .focusNext:
+            WorkspaceManager.shared.focusNext()
+        case .focusPrev:
+            WorkspaceManager.shared.focusPrev()
+        case .swapMaster:
+            WorkspaceManager.shared.swapMaster()
+        case .toggleLayout:
+            WorkspaceManager.shared.toggleLayout()
+        case .customCommand(_, let command):
+            run(command)
         }
+    }
 
-        let hasModifier = flags.contains(config.modifier)
-        let hasShift = flags.contains(.maskShift)
-        let hasExtraModifiers =
-            (config.modifier != .maskCommand && flags.contains(.maskCommand))
-            || (config.modifier != .maskControl && flags.contains(.maskControl))
-            || (config.modifier != .maskAlternate && flags.contains(.maskAlternate))
+    private func run(_ command: String) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/sh")
+            process.arguments = ["-c", command]
+            try? process.run()
+        }
+    }
+}
 
-        guard hasModifier, !hasExtraModifiers else {
-            return Unmanaged.passRetained(event)
+extension HotkeyChord {
+    fileprivate var carbonModifiers: UInt32 {
+        var flags: UInt32
+        switch modifier {
+        case .command:
+            flags = UInt32(cmdKey)
+        case .option:
+            flags = UInt32(optionKey)
+        case .control:
+            flags = UInt32(controlKey)
         }
-
-        for binding in config.customBindings {
-            guard binding.key == keyCode, binding.shift == hasShift else { continue }
-            let cmd = binding.command
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/bin/sh")
-                process.arguments = ["-c", cmd]
-                try? process.run()
-            }
-            return nil
+        if shift {
+            flags |= UInt32(shiftKey)
         }
-
-        if let number = config.numberKeys[keyCode] {
-            let index = number - 1
-            DispatchQueue.main.async {
-                if hasShift {
-                    WorkspaceManager.shared.moveActiveWindowTo(index)
-                } else {
-                    WorkspaceManager.shared.switchTo(index)
-                }
-            }
-            return nil
-        }
-
-        let b = config.bindings
-
-        if keyCode == b.focusMonitorPrev.key && hasShift == b.focusMonitorPrev.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.focusMonitor(offset: -1) }
-            return nil
-        }
-        if keyCode == b.focusMonitorNext.key && hasShift == b.focusMonitorNext.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.focusMonitor(offset: 1) }
-            return nil
-        }
-        if keyCode == b.moveMonitorPrev.key && hasShift == b.moveMonitorPrev.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.moveWindowToMonitor(offset: -1) }
-            return nil
-        }
-        if keyCode == b.moveMonitorNext.key && hasShift == b.moveMonitorNext.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.moveWindowToMonitor(offset: 1) }
-            return nil
-        }
-        if keyCode == b.lastWorkspace.key && hasShift == b.lastWorkspace.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.switchToLast() }
-            return nil
-        }
-        if keyCode == b.focusNext.key && hasShift == b.focusNext.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.focusNext() }
-            return nil
-        }
-        if keyCode == b.focusPrev.key && hasShift == b.focusPrev.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.focusPrev() }
-            return nil
-        }
-        if keyCode == b.swapMaster.key && hasShift == b.swapMaster.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.swapMaster() }
-            return nil
-        }
-        if keyCode == b.toggleLayout.key && hasShift == b.toggleLayout.shift {
-            DispatchQueue.main.async { WorkspaceManager.shared.toggleLayout() }
-            return nil
-        }
-
-        return Unmanaged.passRetained(event)
+        return flags
     }
 }

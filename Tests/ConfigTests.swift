@@ -26,7 +26,7 @@ struct ConfigTests {
 
         #expect(config.workspaceCount == 4)
         #expect(config.masterRatio == CGFloat(0.62))
-        #expect(config.modifier == .maskControl)
+        #expect(config.modifier == .control)
         #expect(config.bindings.focusNext.key == Key.l)
         #expect(config.bindings.moveMonitorPrev.shift)
         #expect(config.customBindings.count == 1)
@@ -49,7 +49,7 @@ struct ConfigTests {
 
         #expect(config.workspaceCount == Config.defaultWorkspaceCount)
         #expect(config.masterRatio == Config.defaultMasterRatio)
-        #expect(config.modifier == .maskAlternate)
+        #expect(config.modifier == .option)
         #expect(config.bindings.focusNext.key == Key.j)
     }
 

@@ -302,8 +302,7 @@ package final class WorkspaceManager {
         StatusBar.shared.update()
     }
 
-    package func reloadConfig() {
-        Config.load()
+    package func applyCurrentConfig() {
         let count = Config.shared.workspaceCount
         for monitor in monitors {
             monitor.resizeWorkspaces(to: count)
@@ -312,7 +311,6 @@ package final class WorkspaceManager {
             }
         }
         StatusBar.shared.update()
-        fputs("parket: config reloaded\n", stderr)
     }
 
     package func setTilingPaused(_ paused: Bool) {
