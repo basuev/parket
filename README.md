@@ -38,10 +38,10 @@ the GitHub release zip is ad-hoc signed for now. Homebrew is the recommended ins
 - **master-stack tiling** - new windows auto-tile in dwm-style layout
 - **monocle layout** - per-workspace fullscreen mode, toggle with option+m
 - **menubar indicator** - badge widgets show active workspace and occupied ones
-- **custom keybindings** - bind any key combo to shell commands via toml config
+- **custom keybindings** - bind supported key names to shell commands via toml config
 - **multi-monitor** - per-display workspaces, each monitor has its own workspace set
 - **app switcher follow** - command+tab to a hidden workspace window opens that workspace
-- **crash safety** - all windows restore on exit
+- **exit safety** - tracked windows restore on quit, SIGTERM, and SIGINT
 - **permission onboarding** - menubar and permission window show Accessibility state
 - **escape hatches** - pause tiling, retile now, restore all windows, open config, copy diagnostics
 
@@ -60,7 +60,7 @@ macOS command+tab stays the system app switcher. when it selects a window on ano
 | `Option + ,` / `Option + .` | focus prev/next monitor |
 | `Option + Shift + ,` / `Option + Shift + .` | move window to prev/next monitor |
 
-all keybindings are configurable - see configuration below.
+most action bindings are configurable - see configuration below. workspace switch and move bindings stay on 1-9.
 
 ## configuration
 
@@ -91,7 +91,7 @@ key = "shift+b"
 command = "open -n -a Safari"
 ```
 
-custom bindings always include the modifier key (option by default). prefix with `shift+` to add shift to the combo.
+bindings use the modifier key (option by default). prefix with `shift+` to add shift to the combo. supported key names are `a-z`, `0-9`, `return`, `tab`, `space`, `escape`, `delete`, `comma`, `period`, `slash`, `backslash`, `minus`, `equal`, `grave`, `leftbracket`, `rightbracket`, `semicolon`, and `quote`.
 
 to reload config at runtime, use the "Reload Config" option in the menubar menu.
 
@@ -140,21 +140,38 @@ make uninstall
 | virtual workspaces | yes | yes | yes | yes |
 | config | toml | toml | cli | gui + yaml |
 | layouts | master-stack, monocle | tree (i3) | bsp | 14+ |
-| lines of code | ~1k | ~15k | ~20k | ~15k |
+| lines of code | ~3.1k | ~15k | ~20k | ~15k |
 
-parket is not trying to compete with these projects. it exists for those who want the absolute minimum: a single layout, a few keybindings, zero dependencies, and code small enough to read in one sitting.
+LOC counts exclude tests. parket counts production Swift and package files.
+
+parket is for users who want a small native macOS tiler with one primary layout, text config, no runtime dependencies, and public APIs only.
 
 ## resource usage
 
-parket is designed to stay out of your way. here is how it compares to AeroSpace under identical conditions (Apple Silicon, macOS 26, 6 tiled windows, continuous open/close workload):
+measure resource usage with `scripts/benchmark.sh`. Last local run:
 
-- **2x less memory** - 41 MB vs 83 MB
-- **near-zero CPU** - 0.0% even during active window management, vs 2% for AeroSpace
-- **40x fewer context switches** - less work for the kernel, less energy spent
+- date: 2026-06-11 16:45-16:47 UTC
+- machine: Mac15,6, Apple M3 Pro, macOS 26.4.1, 18 GB RAM, 2 monitors
+- workload: 6 Terminal windows, 30s idle, 60s continuous open/close
 
-fewer threads, fewer wakeups, longer battery life. you won't find parket in Activity Monitor unless you go looking for it.
+| active phase mean | parket | AeroSpace |
+|-------------------|--------|-----------|
+| RSS | 46.5 MiB | 76.8 MiB |
+| CPU | 0.0% | 0.9% |
+| threads | 5 | 14 |
+| context switches | 2,285 | 10,899 |
 
-<sub>measured with `scripts/benchmark.sh`. run it yourself - numbers are reproducible.</sub>
+```fish
+scripts/benchmark.sh run
+```
+
+the script samples RSS, CPU, thread count, context switches, and Terminal window count. run it once with parket and once with AeroSpace, then compare the latest CSV files:
+
+```fish
+set parket_csv (ls -t benchmark-parket-*.csv | head -n 1)
+set aerospace_csv (ls -t benchmark-aerospace-*.csv | head -n 1)
+scripts/benchmark.sh compare $parket_csv $aerospace_csv
+```
 
 ## license
 
