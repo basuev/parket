@@ -1,37 +1,6 @@
 import AppKit
 import ApplicationServices
 
-struct WindowGroupKey: Hashable {
-    let pid: pid_t
-    let frame: WindowFrameKey
-
-    init(pid: pid_t, frame: CGRect) {
-        self.pid = pid
-        self.frame = WindowFrameKey(frame)
-    }
-}
-
-struct WindowFrameKey: Hashable {
-    private static let unit: CGFloat = 16
-
-    let x: Int
-    let y: Int
-    let width: Int
-    let height: Int
-
-    init(_ frame: CGRect) {
-        x = Self.quantize(frame.origin.x)
-        y = Self.quantize(frame.origin.y)
-        width = Self.quantize(frame.width)
-        height = Self.quantize(frame.height)
-    }
-
-    private static func quantize(_ value: CGFloat) -> Int {
-        guard value.isFinite else { return 0 }
-        return Int((value / unit).rounded())
-    }
-}
-
 struct TrackedWindow: Equatable {
     let element: AXUIElement
     let focusElement: AXUIElement
@@ -39,6 +8,7 @@ struct TrackedWindow: Equatable {
     let pid: pid_t
     let group: WindowGroupKey
 
+    @MainActor
     init(element: AXUIElement, pid: pid_t, members: [AXUIElement] = [], group: WindowGroupKey? = nil) {
         let window = WindowManager.canonicalWindowElement(element) ?? element
         self.element = window
@@ -70,14 +40,17 @@ struct TrackedWindow: Equatable {
         references.contains { CFEqual($0, element) }
     }
 
+    @MainActor
     func getFrame() -> CGRect? {
         WindowManager.frame(of: element)
     }
 
+    @MainActor
     func keepingMembers(from current: TrackedWindow) -> TrackedWindow {
         TrackedWindow(element: focusElement, pid: pid, members: current.members, group: group)
     }
 
+    @MainActor
     func setPosition(_ point: CGPoint) {
         var p = point
         guard let value = AXValueCreate(.cgPoint, &p) else { return }
@@ -86,6 +59,7 @@ struct TrackedWindow: Equatable {
         }
     }
 
+    @MainActor
     func setSize(_ size: CGSize) {
         var s = size
         guard let value = AXValueCreate(.cgSize, &s) else { return }
@@ -94,15 +68,18 @@ struct TrackedWindow: Equatable {
         }
     }
 
+    @MainActor
     func hideOffscreen(_ screen: CGRect) {
         setPosition(CGPoint(x: screen.origin.x + 1 - screen.width, y: screen.maxY - 1))
     }
 
+    @MainActor
     func setFrame(_ rect: CGRect) {
         setPosition(rect.origin)
         setSize(rect.size)
     }
 
+    @MainActor
     func focus() {
         if let app = NSRunningApplication(processIdentifier: pid) {
             app.activate()
@@ -114,14 +91,17 @@ struct TrackedWindow: Equatable {
         AXUIElementSetAttributeValue(focusElement, kAXFocusedAttribute as CFString, kCFBooleanTrue)
     }
 
+    @MainActor
     func raise() {
         AXUIElementPerformAction(element, kAXRaiseAction as CFString)
     }
 
+    @MainActor
     func isTileable() -> Bool {
         WindowManager.isTileable(element)
     }
 
+    @MainActor
     func title() -> String? {
         var value: AnyObject?
         guard AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &value) == .success else {
@@ -143,6 +123,7 @@ struct TrackedWindow: Equatable {
     }
 }
 
+@MainActor
 enum WindowManager {
     static func allWindows() -> [TrackedWindow] {
         var result: [TrackedWindow] = []
@@ -153,7 +134,7 @@ enum WindowManager {
 
             var windowsValue: AnyObject?
             guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
-                  let windows = windowsValue as? [AXUIElement]
+                let windows = windowsValue as? [AXUIElement]
             else { continue }
 
             result.append(contentsOf: trackedWindows(pid: pid, windows: windows))
@@ -166,7 +147,7 @@ enum WindowManager {
 
         var windowsValue: AnyObject?
         guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
-              let windows = windowsValue as? [AXUIElement]
+            let windows = windowsValue as? [AXUIElement]
         else { return nil }
 
         return trackedWindows(pid: pid, windows: windows)
@@ -177,7 +158,8 @@ enum WindowManager {
         var result: [TrackedWindow] = []
 
         for candidate in candidates {
-            let related = candidates
+            let related =
+                candidates
                 .filter { candidate.matches($0) }
                 .map(\.window)
             let window = TrackedWindow(element: candidate.element, pid: pid, members: related, group: candidate.group)
@@ -206,7 +188,7 @@ enum WindowManager {
     private static func trackedWindow(_ appRef: AXUIElement, _ attribute: CFString, pid: pid_t) -> TrackedWindow? {
         var value: AnyObject?
         guard AXUIElementCopyAttributeValue(appRef, attribute, &value) == .success,
-              CFGetTypeID(value) == AXUIElementGetTypeID()
+            CFGetTypeID(value) == AXUIElementGetTypeID()
         else {
             return nil
         }
@@ -217,16 +199,17 @@ enum WindowManager {
     }
 
     static func isTileable(_ element: AXUIElement) -> Bool {
-        let attrs = [
-            kAXRoleAttribute,
-            kAXSubroleAttribute,
-            kAXMinimizedAttribute,
-            "AXFullScreen"
-        ] as CFArray
+        let attrs =
+            [
+                kAXRoleAttribute,
+                kAXSubroleAttribute,
+                kAXMinimizedAttribute,
+                "AXFullScreen",
+            ] as CFArray
 
         var values: CFArray?
         guard AXUIElementCopyMultipleAttributeValues(element, attrs, .stopOnError, &values) == .success,
-              let results = values as? [AnyObject], results.count == 4
+            let results = values as? [AnyObject], results.count == 4
         else { return false }
 
         let role = results[0] as? String
@@ -245,7 +228,7 @@ enum WindowManager {
         var subroleValue: AnyObject?
 
         guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success,
-              AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleValue) == .success
+            AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleValue) == .success
         else { return false }
 
         let role = roleValue as? String
@@ -256,7 +239,7 @@ enum WindowManager {
     static func canonicalWindowElement(_ element: AXUIElement) -> AXUIElement? {
         var value: AnyObject?
         guard AXUIElementCopyAttributeValue(element, kAXWindowAttribute as CFString, &value) == .success,
-              CFGetTypeID(value) == AXUIElementGetTypeID()
+            CFGetTypeID(value) == AXUIElementGetTypeID()
         else { return nil }
 
         let window = value as! AXUIElement
@@ -268,7 +251,7 @@ enum WindowManager {
         var posValue: AnyObject?
         var sizeValue: AnyObject?
         guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posValue) == .success,
-              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success
+            AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success
         else { return nil }
 
         var pos = CGPoint.zero
@@ -308,9 +291,8 @@ enum WindowManager {
     }
 }
 
+@MainActor
 private struct WindowCandidate {
-    private static let minOverlap: CGFloat = 0.88
-
     let element: AXUIElement
     let window: AXUIElement
     let frame: CGRect
@@ -326,14 +308,6 @@ private struct WindowCandidate {
     }
 
     func matches(_ other: WindowCandidate) -> Bool {
-        group == other.group || overlap(frame, other.frame) >= Self.minOverlap
-    }
-
-    private func overlap(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
-        let area = min(lhs.width * lhs.height, rhs.width * rhs.height)
-        guard area > 0 else { return 0 }
-        let intersection = lhs.intersection(rhs)
-        guard !intersection.isNull else { return 0 }
-        return max(0, intersection.width * intersection.height) / area
+        WindowGrouping.matches(lhsGroup: group, lhsFrame: frame, rhsGroup: other.group, rhsFrame: other.frame)
     }
 }
