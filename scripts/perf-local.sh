@@ -79,6 +79,11 @@ summarize_workspace_switch() {
         hides[n] = number_value($0, "hide_ms")
         retiles[n] = number_value($0, "retile_ms")
         focuses[n] = number_value($0, "focus_ms")
+        frontmost_checks[n] = number_value($0, "frontmost_check_ms")
+        activates[n] = number_value($0, "activate_ms")
+        focused_window_reads[n] = number_value($0, "focused_window_read_ms")
+        raises[n] = number_value($0, "raise_ms")
+        explicit_focus_attrs[n] = number_value($0, "explicit_focus_attrs_ms")
         duration_sum += durations[n]
         queue_sum += queue_delays[n]
         run_sum += runs[n]
@@ -87,12 +92,27 @@ summarize_workspace_switch() {
         hide_sum += hides[n]
         retile_sum += retiles[n]
         focus_sum += focuses[n]
+        frontmost_check_sum += frontmost_checks[n]
+        activate_sum += activates[n]
+        focused_window_read_sum += focused_window_reads[n]
+        raise_sum += raises[n]
+        explicit_focus_attrs_sum += explicit_focus_attrs[n]
         hide_reads_sum += number_value($0, "hide_ax_reads")
         hide_writes_sum += number_value($0, "hide_ax_writes")
         retile_reads_sum += number_value($0, "retile_ax_reads")
         retile_writes_sum += number_value($0, "retile_ax_writes")
         focus_reads_sum += number_value($0, "focus_ax_reads")
         focus_writes_sum += number_value($0, "focus_ax_writes")
+        frontmost_check_reads_sum += number_value($0, "frontmost_check_ax_reads")
+        frontmost_check_writes_sum += number_value($0, "frontmost_check_ax_writes")
+        activate_reads_sum += number_value($0, "activate_ax_reads")
+        activate_writes_sum += number_value($0, "activate_ax_writes")
+        focused_window_read_reads_sum += number_value($0, "focused_window_read_ax_reads")
+        focused_window_read_writes_sum += number_value($0, "focused_window_read_ax_writes")
+        raise_reads_sum += number_value($0, "raise_ax_reads")
+        raise_writes_sum += number_value($0, "raise_ax_writes")
+        explicit_focus_attrs_reads_sum += number_value($0, "explicit_focus_attrs_ax_reads")
+        explicit_focus_attrs_writes_sum += number_value($0, "explicit_focus_attrs_ax_writes")
     }
     function number_value(line, key,    marker, start, rest) {
         marker = "\"" key "\":"
@@ -130,6 +150,11 @@ summarize_workspace_switch() {
         sort_numbers(hides, n)
         sort_numbers(retiles, n)
         sort_numbers(focuses, n)
+        sort_numbers(frontmost_checks, n)
+        sort_numbers(activates, n)
+        sort_numbers(focused_window_reads, n)
+        sort_numbers(raises, n)
+        sort_numbers(explicit_focus_attrs, n)
         printf "workspace_switch samples: %d expected=%d\n", n, expected
         printf "duration_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f\n", \
             percentile(durations, n, 0.50), percentile(durations, n, 0.95), durations[n], duration_sum / n
@@ -143,6 +168,16 @@ summarize_workspace_switch() {
             percentile(retiles, n, 0.50), percentile(retiles, n, 0.95), retiles[n], retile_sum / n, retile_reads_sum / n, retile_writes_sum / n
         printf "focus_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
             percentile(focuses, n, 0.50), percentile(focuses, n, 0.95), focuses[n], focus_sum / n, focus_reads_sum / n, focus_writes_sum / n
+        printf "frontmost_check_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
+            percentile(frontmost_checks, n, 0.50), percentile(frontmost_checks, n, 0.95), frontmost_checks[n], frontmost_check_sum / n, frontmost_check_reads_sum / n, frontmost_check_writes_sum / n
+        printf "activate_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
+            percentile(activates, n, 0.50), percentile(activates, n, 0.95), activates[n], activate_sum / n, activate_reads_sum / n, activate_writes_sum / n
+        printf "focused_window_read_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
+            percentile(focused_window_reads, n, 0.50), percentile(focused_window_reads, n, 0.95), focused_window_reads[n], focused_window_read_sum / n, focused_window_read_reads_sum / n, focused_window_read_writes_sum / n
+        printf "raise_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
+            percentile(raises, n, 0.50), percentile(raises, n, 0.95), raises[n], raise_sum / n, raise_reads_sum / n, raise_writes_sum / n
+        printf "explicit_focus_attrs_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
+            percentile(explicit_focus_attrs, n, 0.50), percentile(explicit_focus_attrs, n, 0.95), explicit_focus_attrs[n], explicit_focus_attrs_sum / n, explicit_focus_attrs_reads_sum / n, explicit_focus_attrs_writes_sum / n
         printf "ax_reads mean=%.1f\n", reads_sum / n
         printf "ax_writes mean=%.1f\n", writes_sum / n
     }' "$trace"

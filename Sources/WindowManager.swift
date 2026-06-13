@@ -8,6 +8,11 @@ struct TrackedWindow: Equatable {
     let pid: pid_t
     let group: WindowGroupKey
 
+    private enum FocusIntent {
+        case full
+        case workspaceSwitch
+    }
+
     @MainActor
     init(element: AXUIElement, pid: pid_t, members: [AXUIElement] = [], group: WindowGroupKey? = nil) {
         let window = WindowManager.canonicalWindowElement(element) ?? element
@@ -87,39 +92,50 @@ struct TrackedWindow: Equatable {
 
     @MainActor
     func focus() {
-        activateApplicationIfNeeded()
-        raiseIfNeeded()
-        applyFocusAttributes()
-        WindowManager.recordExpectedFocus(self)
+        focus(intent: .full)
     }
 
     @MainActor
     func focusAfterWorkspaceSwitch() {
-        activateApplicationIfNeeded()
-        raiseIfNeeded()
-        guard requiresExplicitFocusAttributes else { return }
-        applyFocusAttributes()
+        focus(intent: .workspaceSwitch)
+    }
+
+    @MainActor
+    private func focus(intent: FocusIntent) {
+        let frontmost = PerformanceTelemetry.traceSubspan("frontmost_check") {
+            WindowManager.isFrontmostApplication(pid: pid)
+        }
+        PerformanceTelemetry.traceSubspan("activate") {
+            activateApplicationIfNeeded(frontmost: frontmost)
+        }
+        let focused = PerformanceTelemetry.traceSubspan("focused_window_read") {
+            frontmost && WindowManager.isExpectedFocused(self) && WindowManager.isActuallyFocused(self)
+        }
+        PerformanceTelemetry.traceSubspan("raise") {
+            if shouldRaise(frontmost: frontmost, focused: focused) {
+                raise()
+            }
+        }
+        PerformanceTelemetry.traceSubspan("explicit_focus_attrs") {
+            if shouldApplyFocusAttributes(intent: intent) {
+                applyFocusAttributes()
+            }
+        }
         WindowManager.recordExpectedFocus(self)
     }
 
     @MainActor
-    private func activateApplicationIfNeeded() {
-        guard !WindowManager.isFrontmostApplication(pid: pid) else { return }
+    private func activateApplicationIfNeeded(frontmost: Bool) {
+        guard !frontmost else { return }
         if let app = NSRunningApplication(processIdentifier: pid) {
             app.activate()
         }
     }
 
-    @MainActor
-    private func raiseIfNeeded() {
-        guard
-            WindowManager.isFrontmostApplication(pid: pid),
-            WindowManager.isExpectedFocused(self),
-            WindowManager.isActuallyFocused(self)
-        else {
-            raise()
-            return
-        }
+    private func shouldRaise(frontmost: Bool, focused: Bool) -> Bool {
+        guard frontmost else { return true }
+        guard focused else { return true }
+        return false
     }
 
     @MainActor
@@ -165,6 +181,15 @@ struct TrackedWindow: Equatable {
 
     private var requiresExplicitFocusAttributes: Bool {
         members.count > 1 || !CFEqual(element, focusElement)
+    }
+
+    private func shouldApplyFocusAttributes(intent: FocusIntent) -> Bool {
+        switch intent {
+        case .full:
+            return true
+        case .workspaceSwitch:
+            return requiresExplicitFocusAttributes
+        }
     }
 }
 
@@ -258,6 +283,11 @@ enum WindowManager {
 
     static func clearExpectedFocus(pid: pid_t) {
         guard expectedFocusedWindow?.pid == pid else { return }
+        expectedFocusedWindow = nil
+    }
+
+    static func clearExpectedFocus(_ window: TrackedWindow) {
+        guard expectedFocusedWindow == window else { return }
         expectedFocusedWindow = nil
     }
 

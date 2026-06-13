@@ -19,7 +19,7 @@ package final class WindowObserver {
 
     private static let maxRetries = 10
     private static let retryInterval: TimeInterval = 0.05
-    private static let syncCoalesceDelay: TimeInterval = 0.035
+    private static let syncCoalesceDelay: TimeInterval = 0.06
     private static let focusCoalesceDelay: TimeInterval = 0.015
 
     private var observers: [pid_t: AXObserver] = [:]
@@ -208,6 +208,7 @@ package final class WindowObserver {
             }
             removeObservedWindow(element: element, pid: pidValue)
             WindowManager.invalidateAppliedGeometry(element)
+            WorkspaceManager.shared.handleWindowDestroyed(pid: pidValue, element: element)
             scheduleSyncWindows(pid: pidValue, allowEmpty: true)
         } else if notif == kAXFocusedWindowChangedNotification || notif == kAXFocusedUIElementChangedNotification {
             scheduleFocusFollow(pid: pid(for: element))

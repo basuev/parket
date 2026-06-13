@@ -11,6 +11,7 @@ enum WindowUpdate {
 package final class Monitor {
     private static let geometryDebounceDelay: TimeInterval = 0.08
     private static let geometrySuppressionDelay: TimeInterval = 0.20
+    private static let scheduledRetileDelay: TimeInterval = 0.025
     private static let frameTolerance: CGFloat = 2.0
 
     let displayID: CGDirectDisplayID
@@ -215,7 +216,7 @@ package final class Monitor {
         guard !WorkspaceManager.shared.isTilingPaused else { return }
         guard !retileScheduled else { return }
         retileScheduled = true
-        DispatchQueue.main.async { [self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.scheduledRetileDelay) { [self] in
             retileScheduled = false
             retile(validate: false)
         }

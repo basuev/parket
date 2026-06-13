@@ -11,12 +11,14 @@ package final class WorkspaceManager {
     private static let focusFollowRetryDelay: TimeInterval = 0.015
     private static let focusFollowMaxAttempts = 5
     private static let internalFocusSuppressionDelay: TimeInterval = 0.16
+    private static let fallbackRegistryRefreshDelay: TimeInterval = 0.02
 
     private(set) var monitors: [Monitor] = []
     private(set) var focusedMonitorIndex: Int = 0
     package private(set) var isTilingPaused = false
     private var screenChangeWork: DispatchWorkItem?
     private var focusFollowWork: DispatchWorkItem?
+    private var registryRefreshWorks: [pid_t: DispatchWorkItem] = [:]
     private var ignoreExternalFocusUntil: TimeInterval = 0
     private let windowRegistry = ShadowWindowRegistry()
 
@@ -105,6 +107,7 @@ package final class WorkspaceManager {
 
     func removeWindow(pid: pid_t) {
         removeWindows { $0.pid == pid }
+        registryRefreshWorks.removeValue(forKey: pid)?.cancel()
         windowRegistry.remove(pid: pid)
         WindowManager.clearExpectedFocus(pid: pid)
     }
@@ -202,12 +205,21 @@ package final class WorkspaceManager {
         }
     }
 
+    func handleWindowDestroyed(pid: pid_t, element: AXUIElement) {
+        if let removed = windowRegistry.remove(pid: pid, element: element) {
+            WindowManager.clearExpectedFocus(removed)
+        }
+        scheduleRegistryRefresh(pid: pid)
+    }
+
     private func performWindowGeometryChange(pid: pid_t, element: AXUIElement) {
         guard !isTilingPaused else { return }
         guard let location = locateWindow(pid: pid, element: element) else { return }
         let monitor = monitors[location.monitorIndex]
         guard !monitor.shouldSuppressGeometryNotification() else { return }
-        WindowManager.invalidateAppliedGeometry(monitor.workspaces[location.workspaceIndex][location.windowIndex])
+        let window = monitor.workspaces[location.workspaceIndex][location.windowIndex]
+        windowRegistry.upsert(window, at: location)
+        WindowManager.invalidateAppliedGeometry(window)
         guard monitor.active == location.workspaceIndex else { return }
         monitor.scheduleCorrectiveRetile()
     }
@@ -473,5 +485,15 @@ package final class WorkspaceManager {
 
     private func refreshWindowRegistry(pid: pid_t) {
         windowRegistry.reconcile(pid: pid, from: monitors)
+    }
+
+    private func scheduleRegistryRefresh(pid: pid_t) {
+        registryRefreshWorks[pid]?.cancel()
+        let work = DispatchWorkItem { [self] in
+            registryRefreshWorks.removeValue(forKey: pid)
+            refreshWindowRegistry(pid: pid)
+        }
+        registryRefreshWorks[pid] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.fallbackRegistryRefreshDelay, execute: work)
     }
 }

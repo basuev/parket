@@ -61,6 +61,14 @@ final class ShadowWindowRegistry {
         }
     }
 
+    func remove(pid: pid_t, element: AXUIElement) -> TrackedWindow? {
+        guard let entry = entriesByPID[pid]?.first(where: { $0.window.containsElement(element) }) else {
+            return nil
+        }
+        remove(entry.window)
+        return entry.window
+    }
+
     func remove(pid: pid_t) {
         entriesByPID.removeValue(forKey: pid)
         if focusedEntry?.window.pid == pid {
