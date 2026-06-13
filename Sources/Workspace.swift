@@ -106,14 +106,30 @@ package final class WorkspaceManager {
     }
 
     func removeWindow(pid: pid_t) {
-        removeWindows { $0.pid == pid }
+        var changed = false
+        for monitor in monitors {
+            if monitor.removeWindows(where: { $0.pid == pid }) {
+                changed = true
+            }
+        }
         registryRefreshWorks.removeValue(forKey: pid)?.cancel()
         windowRegistry.remove(pid: pid)
         WindowManager.clearExpectedFocus(pid: pid)
+        guard changed else { return }
+        StatusBar.shared.update()
     }
 
     func removeWindow(_ window: TrackedWindow) {
-        removeWindows { $0.hasElement(window) }
+        var changed = false
+        for monitor in monitors {
+            if monitor.removeWindows(where: { $0.hasElement(window) }) {
+                changed = true
+            }
+        }
+        guard changed else { return }
+        refreshWindowRegistry(pid: window.pid)
+        WindowManager.clearExpectedFocus(window)
+        StatusBar.shared.update()
     }
 
     private func removeWindows(where predicate: (TrackedWindow) -> Bool) {

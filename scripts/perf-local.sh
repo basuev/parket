@@ -13,9 +13,13 @@ CHURN=0
 FOCUS_THRASH=0
 DISTRIBUTE_SCREENS=0
 SCENARIO_LABEL=workspace-switch
+THRESHOLDS=0
+MAX_DURATION_P95_MS=18
+MAX_CHURN_DURATION_P95_MS=35
+MAX_QUEUE_P95_MS=5
 
 usage() {
-    echo "usage: $0 workspace-switch|matrix [--rounds N] [--workspaces N] [--windows-per-workspace N] [--delay-ms N] [--app-instances N] [--native-tabs] [--churn] [--focus-thrash] [--distribute-screens] [--label NAME]"
+    echo "usage: $0 workspace-switch|matrix [--rounds N] [--workspaces N] [--windows-per-workspace N] [--delay-ms N] [--app-instances N] [--native-tabs] [--churn] [--focus-thrash] [--distribute-screens] [--label NAME] [--thresholds] [--max-duration-p95-ms N] [--max-churn-duration-p95-ms N] [--max-queue-p95-ms N]"
     exit 1
 }
 
@@ -68,7 +72,14 @@ run_cycles() {
 summarize_workspace_switch() {
     local trace="$1"
     local expected="$2"
-    awk -v expected="$expected" '
+    local duration_budget="$MAX_DURATION_P95_MS"
+    if [[ "$CHURN" == "1" || "$SCENARIO_LABEL" == "churn" ]]; then
+        duration_budget="$MAX_CHURN_DURATION_P95_MS"
+    fi
+    awk -v expected="$expected" \
+        -v thresholds="$THRESHOLDS" \
+        -v duration_budget="$duration_budget" \
+        -v queue_budget="$MAX_QUEUE_P95_MS" '
     index($0, "\"name\":\"workspace_switch\"") {
         n++
         durations[n] = number_value($0, "duration_ms")
@@ -155,31 +166,69 @@ summarize_workspace_switch() {
         sort_numbers(focused_window_reads, n)
         sort_numbers(raises, n)
         sort_numbers(explicit_focus_attrs, n)
+        duration_p50 = percentile(durations, n, 0.50)
+        duration_p95 = percentile(durations, n, 0.95)
+        queue_p50 = percentile(queue_delays, n, 0.50)
+        queue_p95 = percentile(queue_delays, n, 0.95)
+        run_p50 = percentile(runs, n, 0.50)
+        run_p95 = percentile(runs, n, 0.95)
+        hide_p50 = percentile(hides, n, 0.50)
+        hide_p95 = percentile(hides, n, 0.95)
+        retile_p50 = percentile(retiles, n, 0.50)
+        retile_p95 = percentile(retiles, n, 0.95)
+        focus_p50 = percentile(focuses, n, 0.50)
+        focus_p95 = percentile(focuses, n, 0.95)
+        frontmost_check_p50 = percentile(frontmost_checks, n, 0.50)
+        frontmost_check_p95 = percentile(frontmost_checks, n, 0.95)
+        activate_p50 = percentile(activates, n, 0.50)
+        activate_p95 = percentile(activates, n, 0.95)
+        focused_window_read_p50 = percentile(focused_window_reads, n, 0.50)
+        focused_window_read_p95 = percentile(focused_window_reads, n, 0.95)
+        raise_p50 = percentile(raises, n, 0.50)
+        raise_p95 = percentile(raises, n, 0.95)
+        explicit_focus_attrs_p50 = percentile(explicit_focus_attrs, n, 0.50)
+        explicit_focus_attrs_p95 = percentile(explicit_focus_attrs, n, 0.95)
         printf "workspace_switch samples: %d expected=%d\n", n, expected
         printf "duration_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f\n", \
-            percentile(durations, n, 0.50), percentile(durations, n, 0.95), durations[n], duration_sum / n
+            duration_p50, duration_p95, durations[n], duration_sum / n
         printf "queue_delay_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f\n", \
-            percentile(queue_delays, n, 0.50), percentile(queue_delays, n, 0.95), queue_delays[n], queue_sum / n
+            queue_p50, queue_p95, queue_delays[n], queue_sum / n
         printf "run_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f\n", \
-            percentile(runs, n, 0.50), percentile(runs, n, 0.95), runs[n], run_sum / n
+            run_p50, run_p95, runs[n], run_sum / n
         printf "hide_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
-            percentile(hides, n, 0.50), percentile(hides, n, 0.95), hides[n], hide_sum / n, hide_reads_sum / n, hide_writes_sum / n
+            hide_p50, hide_p95, hides[n], hide_sum / n, hide_reads_sum / n, hide_writes_sum / n
         printf "retile_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
-            percentile(retiles, n, 0.50), percentile(retiles, n, 0.95), retiles[n], retile_sum / n, retile_reads_sum / n, retile_writes_sum / n
+            retile_p50, retile_p95, retiles[n], retile_sum / n, retile_reads_sum / n, retile_writes_sum / n
         printf "focus_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
-            percentile(focuses, n, 0.50), percentile(focuses, n, 0.95), focuses[n], focus_sum / n, focus_reads_sum / n, focus_writes_sum / n
+            focus_p50, focus_p95, focuses[n], focus_sum / n, focus_reads_sum / n, focus_writes_sum / n
         printf "frontmost_check_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
-            percentile(frontmost_checks, n, 0.50), percentile(frontmost_checks, n, 0.95), frontmost_checks[n], frontmost_check_sum / n, frontmost_check_reads_sum / n, frontmost_check_writes_sum / n
+            frontmost_check_p50, frontmost_check_p95, frontmost_checks[n], frontmost_check_sum / n, frontmost_check_reads_sum / n, frontmost_check_writes_sum / n
         printf "activate_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
-            percentile(activates, n, 0.50), percentile(activates, n, 0.95), activates[n], activate_sum / n, activate_reads_sum / n, activate_writes_sum / n
+            activate_p50, activate_p95, activates[n], activate_sum / n, activate_reads_sum / n, activate_writes_sum / n
         printf "focused_window_read_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
-            percentile(focused_window_reads, n, 0.50), percentile(focused_window_reads, n, 0.95), focused_window_reads[n], focused_window_read_sum / n, focused_window_read_reads_sum / n, focused_window_read_writes_sum / n
+            focused_window_read_p50, focused_window_read_p95, focused_window_reads[n], focused_window_read_sum / n, focused_window_read_reads_sum / n, focused_window_read_writes_sum / n
         printf "raise_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
-            percentile(raises, n, 0.50), percentile(raises, n, 0.95), raises[n], raise_sum / n, raise_reads_sum / n, raise_writes_sum / n
+            raise_p50, raise_p95, raises[n], raise_sum / n, raise_reads_sum / n, raise_writes_sum / n
         printf "explicit_focus_attrs_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
-            percentile(explicit_focus_attrs, n, 0.50), percentile(explicit_focus_attrs, n, 0.95), explicit_focus_attrs[n], explicit_focus_attrs_sum / n, explicit_focus_attrs_reads_sum / n, explicit_focus_attrs_writes_sum / n
+            explicit_focus_attrs_p50, explicit_focus_attrs_p95, explicit_focus_attrs[n], explicit_focus_attrs_sum / n, explicit_focus_attrs_reads_sum / n, explicit_focus_attrs_writes_sum / n
         printf "ax_reads mean=%.1f\n", reads_sum / n
         printf "ax_writes mean=%.1f\n", writes_sum / n
+        if (thresholds == 1) {
+            printf "thresholds duration_p95<=%.1f queue_p95<=%.1f samples==%d\n", duration_budget, queue_budget, expected
+            if (n != expected) {
+                printf "perf-local threshold failed: samples %d expected %d\n", n, expected > "/dev/stderr"
+                failed = 1
+            }
+            if (duration_p95 > duration_budget) {
+                printf "perf-local threshold failed: duration p95 %.1f > %.1f\n", duration_p95, duration_budget > "/dev/stderr"
+                failed = 1
+            }
+            if (queue_p95 > queue_budget) {
+                printf "perf-local threshold failed: queue p95 %.1f > %.1f\n", queue_p95, queue_budget > "/dev/stderr"
+                failed = 1
+            }
+            if (failed == 1) exit 1
+        }
     }' "$trace"
 }
 
@@ -190,8 +239,15 @@ screen_count() {
 run_matrix_case() {
     local label="$1"
     shift
+    local threshold_args=()
+    if [[ "$THRESHOLDS" == "1" ]]; then
+        threshold_args+=(--thresholds)
+    fi
+    threshold_args+=(--max-duration-p95-ms "$MAX_DURATION_P95_MS")
+    threshold_args+=(--max-churn-duration-p95-ms "$MAX_CHURN_DURATION_P95_MS")
+    threshold_args+=(--max-queue-p95-ms "$MAX_QUEUE_P95_MS")
     echo "perf-local matrix: $label"
-    bash "$0" workspace-switch --label "$label" "$@"
+    bash "$0" workspace-switch --label "$label" "${threshold_args[@]}" "$@"
 }
 
 run_matrix() {
@@ -322,6 +378,22 @@ case "$cmd" in
                     SCENARIO_LABEL="$2"
                     shift 2
                     ;;
+                --thresholds|--fail-on-thresholds)
+                    THRESHOLDS=1
+                    shift
+                    ;;
+                --max-duration-p95-ms)
+                    MAX_DURATION_P95_MS="$2"
+                    shift 2
+                    ;;
+                --max-churn-duration-p95-ms)
+                    MAX_CHURN_DURATION_P95_MS="$2"
+                    shift 2
+                    ;;
+                --max-queue-p95-ms)
+                    MAX_QUEUE_P95_MS="$2"
+                    shift 2
+                    ;;
                 *)
                     usage
                     ;;
@@ -330,6 +402,29 @@ case "$cmd" in
         run_workspace_switch
         ;;
     matrix)
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --thresholds|--fail-on-thresholds)
+                    THRESHOLDS=1
+                    shift
+                    ;;
+                --max-duration-p95-ms)
+                    MAX_DURATION_P95_MS="$2"
+                    shift 2
+                    ;;
+                --max-churn-duration-p95-ms)
+                    MAX_CHURN_DURATION_P95_MS="$2"
+                    shift 2
+                    ;;
+                --max-queue-p95-ms)
+                    MAX_QUEUE_P95_MS="$2"
+                    shift 2
+                    ;;
+                *)
+                    usage
+                    ;;
+            esac
+        done
         run_matrix
         ;;
     *)
