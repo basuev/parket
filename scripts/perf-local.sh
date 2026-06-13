@@ -70,11 +70,23 @@ summarize_workspace_switch() {
         runs[n] = number_value($0, "run_ms")
         reads[n] = number_value($0, "ax_reads")
         writes[n] = number_value($0, "ax_writes")
+        hides[n] = number_value($0, "hide_ms")
+        retiles[n] = number_value($0, "retile_ms")
+        focuses[n] = number_value($0, "focus_ms")
         duration_sum += durations[n]
         queue_sum += queue_delays[n]
         run_sum += runs[n]
         reads_sum += reads[n]
         writes_sum += writes[n]
+        hide_sum += hides[n]
+        retile_sum += retiles[n]
+        focus_sum += focuses[n]
+        hide_reads_sum += number_value($0, "hide_ax_reads")
+        hide_writes_sum += number_value($0, "hide_ax_writes")
+        retile_reads_sum += number_value($0, "retile_ax_reads")
+        retile_writes_sum += number_value($0, "retile_ax_writes")
+        focus_reads_sum += number_value($0, "focus_ax_reads")
+        focus_writes_sum += number_value($0, "focus_ax_writes")
     }
     function number_value(line, key,    marker, start, rest) {
         marker = "\"" key "\":"
@@ -109,6 +121,9 @@ summarize_workspace_switch() {
         sort_numbers(durations, n)
         sort_numbers(queue_delays, n)
         sort_numbers(runs, n)
+        sort_numbers(hides, n)
+        sort_numbers(retiles, n)
+        sort_numbers(focuses, n)
         printf "workspace_switch samples: %d expected=%d\n", n, expected
         printf "duration_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f\n", \
             percentile(durations, n, 0.50), percentile(durations, n, 0.95), durations[n], duration_sum / n
@@ -116,6 +131,12 @@ summarize_workspace_switch() {
             percentile(queue_delays, n, 0.50), percentile(queue_delays, n, 0.95), queue_delays[n], queue_sum / n
         printf "run_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f\n", \
             percentile(runs, n, 0.50), percentile(runs, n, 0.95), runs[n], run_sum / n
+        printf "hide_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
+            percentile(hides, n, 0.50), percentile(hides, n, 0.95), hides[n], hide_sum / n, hide_reads_sum / n, hide_writes_sum / n
+        printf "retile_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
+            percentile(retiles, n, 0.50), percentile(retiles, n, 0.95), retiles[n], retile_sum / n, retile_reads_sum / n, retile_writes_sum / n
+        printf "focus_ms p50=%.1f p95=%.1f max=%.1f mean=%.1f ax_reads_mean=%.1f ax_writes_mean=%.1f\n", \
+            percentile(focuses, n, 0.50), percentile(focuses, n, 0.95), focuses[n], focus_sum / n, focus_reads_sum / n, focus_writes_sum / n
         printf "ax_reads mean=%.1f\n", reads_sum / n
         printf "ax_writes mean=%.1f\n", writes_sum / n
     }' "$trace"

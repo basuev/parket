@@ -17,6 +17,13 @@ package enum PerformanceTelemetry {
         category: "performance"
     )
     private static let sampleLimit = 120
+    private struct SpanTrace {
+        let name: String
+        let duration: TimeInterval
+        let axReads: Int
+        let axWrites: Int
+    }
+
     private static var samples: [Operation: [Double]] = [:]
     private static var axReads = 0
     private static var axWrites = 0
@@ -24,6 +31,7 @@ package enum PerformanceTelemetry {
     private static var tracePathLoaded = false
     private static var tracePath: String?
     private static var traceHandle: FileHandle?
+    private static var spanTraceStack: [[SpanTrace]] = []
 
     @discardableResult
     package static func measure<T>(_ operation: Operation, _ body: () -> T) -> T {
@@ -57,8 +65,10 @@ package enum PerformanceTelemetry {
         let runStartedAt = ProcessInfo.processInfo.systemUptime
         let startReads = axReads
         let startWrites = axWrites
+        spanTraceStack.append([])
         let result = body()
         let finishedAt = ProcessInfo.processInfo.systemUptime
+        let spans = spanTraceStack.removeLast()
         writeActionTrace(
             name: name,
             startedAt: startedAt,
@@ -67,8 +77,28 @@ package enum PerformanceTelemetry {
             queueDelay: runStartedAt - startedAt,
             axReads: axReads - startReads,
             axWrites: axWrites - startWrites,
-            metadata: metadata
+            metadata: metadata,
+            spans: spans
         )
+        return result
+    }
+
+    @discardableResult
+    package static func traceSubspan<T>(_ name: String, _ body: () -> T) -> T {
+        guard isActionTracingEnabled, !spanTraceStack.isEmpty else { return body() }
+
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        let startReads = axReads
+        let startWrites = axWrites
+        let result = body()
+        let finishedAt = ProcessInfo.processInfo.systemUptime
+        let span = SpanTrace(
+            name: traceFieldPrefix(name),
+            duration: finishedAt - startedAt,
+            axReads: axReads - startReads,
+            axWrites: axWrites - startWrites
+        )
+        spanTraceStack[spanTraceStack.index(before: spanTraceStack.endIndex)].append(span)
         return result
     }
 
@@ -150,7 +180,8 @@ package enum PerformanceTelemetry {
         queueDelay: TimeInterval,
         axReads: Int,
         axWrites: Int,
-        metadata: [String: Int]
+        metadata: [String: Int],
+        spans: [SpanTrace]
     ) {
         var fields: [(String, String)] = [
             ("kind", jsonString("action")),
@@ -163,6 +194,12 @@ package enum PerformanceTelemetry {
             ("ax_writes", String(axWrites)),
             ("result", jsonString("ok")),
         ]
+
+        for span in spans {
+            fields.append(("\(span.name)_ms", formatJSON(span.duration * 1000)))
+            fields.append(("\(span.name)_ax_reads", String(span.axReads)))
+            fields.append(("\(span.name)_ax_writes", String(span.axWrites)))
+        }
 
         for (key, value) in metadata.sorted(by: { $0.key < $1.key }) {
             fields.append((key, String(value)))
@@ -233,5 +270,22 @@ package enum PerformanceTelemetry {
 
     private static func formatJSON(_ value: Double) -> String {
         String(format: "%.3f", value)
+    }
+
+    private static func traceFieldPrefix(_ value: String) -> String {
+        var result = ""
+        for scalar in value.unicodeScalars {
+            let allowed =
+                (scalar.value >= 48 && scalar.value <= 57)
+                || (scalar.value >= 65 && scalar.value <= 90)
+                || (scalar.value >= 97 && scalar.value <= 122)
+                || scalar.value == 95
+            if allowed {
+                result.unicodeScalars.append(scalar)
+            } else {
+                result += "_"
+            }
+        }
+        return result.isEmpty ? "span" : result
     }
 }

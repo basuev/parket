@@ -41,15 +41,21 @@ package final class Monitor {
 
             let screen = WindowManager.screenRect(for: self.screen)
             suppressGeometryNotifications()
-            PerformanceTelemetry.measure(.hideWorkspace) {
-                for win in workspaces[previous] {
-                    win.hideOffscreen(screen)
+            PerformanceTelemetry.traceSubspan("hide") {
+                PerformanceTelemetry.measure(.hideWorkspace) {
+                    for win in workspaces[previous] {
+                        win.hideOffscreen(screen)
+                    }
                 }
             }
 
-            retile(validate: false)
-            PerformanceTelemetry.measure(.focusRestore) {
-                restoreFocusedWindow()
+            PerformanceTelemetry.traceSubspan("retile") {
+                retile(validate: false)
+            }
+            PerformanceTelemetry.traceSubspan("focus") {
+                PerformanceTelemetry.measure(.focusRestore) {
+                    restoreFocusedWindow(afterWorkspaceSwitch: true)
+                }
             }
         }
     }
@@ -215,11 +221,7 @@ package final class Monitor {
 
     func scheduleCorrectiveRetile() {
         guard !WorkspaceManager.shared.isTilingPaused else { return }
-        let now = ProcessInfo.processInfo.systemUptime
-        guard now >= ignoreGeometryUntil else {
-            PerformanceTelemetry.recordSuppressedGeometryNotification()
-            return
-        }
+        guard !shouldSuppressGeometryNotification() else { return }
 
         geometryRetileWork?.cancel()
         let scheduledActive = active
@@ -234,6 +236,12 @@ package final class Monitor {
         }
         geometryRetileWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.geometryDebounceDelay, execute: work)
+    }
+
+    func shouldSuppressGeometryNotification() -> Bool {
+        guard ProcessInfo.processInfo.systemUptime < ignoreGeometryUntil else { return false }
+        PerformanceTelemetry.recordSuppressedGeometryNotification()
+        return true
     }
 
     @discardableResult
@@ -347,12 +355,16 @@ package final class Monitor {
         previousActive = 0
     }
 
-    func restoreFocusedWindow() {
+    func restoreFocusedWindow(afterWorkspaceSwitch: Bool = false) {
         let windows = workspaces[active]
         guard !windows.isEmpty else { return }
         let idx = min(focusedIndices[active], windows.count - 1)
         let target = windows[idx]
-        target.focus()
+        if afterWorkspaceSwitch {
+            target.focusAfterWorkspaceSwitch()
+        } else {
+            target.focus()
+        }
     }
 
     func restoreAllWindows() {

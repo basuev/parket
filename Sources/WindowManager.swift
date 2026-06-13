@@ -87,10 +87,28 @@ struct TrackedWindow: Equatable {
 
     @MainActor
     func focus() {
+        activateApplication()
+        raise()
+        applyFocusAttributes()
+    }
+
+    @MainActor
+    func focusAfterWorkspaceSwitch() {
+        activateApplication()
+        raise()
+        guard requiresExplicitFocusAttributes else { return }
+        applyFocusAttributes()
+    }
+
+    @MainActor
+    private func activateApplication() {
         if let app = NSRunningApplication(processIdentifier: pid) {
             app.activate()
         }
-        WindowManager.performAction(element, kAXRaiseAction as CFString)
+    }
+
+    @MainActor
+    private func applyFocusAttributes() {
         for target in TrackedWindow.unique([element, focusElement]) {
             WindowManager.setAttributeValue(target, kAXMainAttribute as CFString, kCFBooleanTrue)
             WindowManager.setAttributeValue(target, kAXFocusedAttribute as CFString, kCFBooleanTrue)
@@ -126,6 +144,10 @@ struct TrackedWindow: Equatable {
 
     private var references: [AXUIElement] {
         TrackedWindow.unique([element, focusElement] + members)
+    }
+
+    private var requiresExplicitFocusAttributes: Bool {
+        members.count > 1 || !CFEqual(element, focusElement)
     }
 }
 

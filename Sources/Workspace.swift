@@ -6,12 +6,6 @@ import Foundation
 package final class WorkspaceManager {
     package static let shared = WorkspaceManager()
 
-    private struct WindowLocation {
-        let monitorIndex: Int
-        let workspaceIndex: Int
-        let windowIndex: Int
-    }
-
     private static let screenChangeDebounceDelay: TimeInterval = 0.25
     private static let screenChangeMaxAttempts = 8
     private static let focusFollowRetryDelay: TimeInterval = 0.015
@@ -22,6 +16,7 @@ package final class WorkspaceManager {
     package private(set) var isTilingPaused = false
     private var screenChangeWork: DispatchWorkItem?
     private var focusFollowWork: DispatchWorkItem?
+    private let windowRegistry = ShadowWindowRegistry()
 
     var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
 
@@ -41,6 +36,7 @@ package final class WorkspaceManager {
                 monitor.retile(validate: false)
             }
         }
+        refreshWindowRegistry()
         StatusBar.shared.update()
     }
 
@@ -59,6 +55,7 @@ package final class WorkspaceManager {
     func moveActiveWindowTo(_ index: Int) {
         guard !isTilingPaused else { return }
         focusedMonitor.moveActiveWindowTo(index)
+        refreshWindowRegistry()
         StatusBar.shared.update()
     }
 
@@ -67,12 +64,19 @@ package final class WorkspaceManager {
         for monitor in monitors {
             let result = monitor.updateExistingWindow(window)
             if result != .missing {
+                if result == .replaced {
+                    refreshWindowRegistry()
+                }
                 return result
             }
         }
         let result = focusedMonitor.addWindow(window)
         if result == .inserted {
+            refreshWindowRegistry()
             StatusBar.shared.update()
+        }
+        if result == .replaced {
+            refreshWindowRegistry()
         }
         return result
     }
@@ -91,6 +95,7 @@ package final class WorkspaceManager {
         }
 
         if changed {
+            refreshWindowRegistry()
             StatusBar.shared.update()
         }
     }
@@ -111,6 +116,7 @@ package final class WorkspaceManager {
             }
         }
         guard changed else { return }
+        refreshWindowRegistry()
         StatusBar.shared.update()
     }
 
@@ -159,6 +165,7 @@ package final class WorkspaceManager {
         target.retile(validate: false)
 
         focusedMonitorIndex = targetIndex
+        refreshWindowRegistry()
         moved.focus()
         StatusBar.shared.update()
     }
@@ -187,6 +194,7 @@ package final class WorkspaceManager {
         guard !isTilingPaused else { return }
         guard let location = locateWindow(pid: pid, element: element) else { return }
         let monitor = monitors[location.monitorIndex]
+        guard !monitor.shouldSuppressGeometryNotification() else { return }
         WindowManager.invalidateAppliedGeometry(monitor.workspaces[location.workspaceIndex][location.windowIndex])
         guard monitor.active == location.workspaceIndex else { return }
         monitor.scheduleCorrectiveRetile()
@@ -314,6 +322,7 @@ package final class WorkspaceManager {
                 }
             }
 
+            refreshWindowRegistry()
             StatusBar.shared.update()
         }
     }
@@ -326,6 +335,7 @@ package final class WorkspaceManager {
                 monitor.retile(validate: true)
             }
         }
+        refreshWindowRegistry()
         StatusBar.shared.update()
     }
 
@@ -391,63 +401,27 @@ package final class WorkspaceManager {
     }
 
     private func locateWindow(_ window: TrackedWindow) -> WindowLocation? {
-        for monitorIndex in monitors.indices {
-            let monitor = monitors[monitorIndex]
-            for workspaceIndex in monitor.workspaces.indices {
-                if let windowIndex = monitor.workspaces[workspaceIndex].firstIndex(of: window) {
-                    return WindowLocation(
-                        monitorIndex: monitorIndex,
-                        workspaceIndex: workspaceIndex,
-                        windowIndex: windowIndex
-                    )
-                }
-            }
+        if let location = windowRegistry.locate(window) {
+            return location
         }
-        return nil
+        refreshWindowRegistry()
+        return windowRegistry.locate(window)
     }
 
     private func locateWindow(pid: pid_t, element: AXUIElement) -> WindowLocation? {
-        for monitorIndex in monitors.indices {
-            let monitor = monitors[monitorIndex]
-            for workspaceIndex in monitor.workspaces.indices {
-                for windowIndex in monitor.workspaces[workspaceIndex].indices {
-                    let window = monitor.workspaces[workspaceIndex][windowIndex]
-                    guard window.pid == pid, window.containsElement(element) else { continue }
-                    return WindowLocation(
-                        monitorIndex: monitorIndex,
-                        workspaceIndex: workspaceIndex,
-                        windowIndex: windowIndex
-                    )
-                }
-            }
+        if let location = windowRegistry.locate(pid: pid, element: element) {
+            return location
         }
-        return nil
+        refreshWindowRegistry()
+        return windowRegistry.locate(pid: pid, element: element)
     }
 
     private func singleTrackedWindow(pid: pid_t) -> (window: TrackedWindow, location: WindowLocation)? {
-        var result: (window: TrackedWindow, location: WindowLocation)?
-
-        for monitorIndex in monitors.indices {
-            let monitor = monitors[monitorIndex]
-            for workspaceIndex in monitor.workspaces.indices {
-                for windowIndex in monitor.workspaces[workspaceIndex].indices {
-                    let window = monitor.workspaces[workspaceIndex][windowIndex]
-                    guard window.pid == pid, window.isTileable() else { continue }
-
-                    guard result == nil else { return nil }
-                    result = (
-                        window,
-                        WindowLocation(
-                            monitorIndex: monitorIndex,
-                            workspaceIndex: workspaceIndex,
-                            windowIndex: windowIndex
-                        )
-                    )
-                }
-            }
+        if let result = windowRegistry.singleTrackedWindow(pid: pid) {
+            return result
         }
-
-        return result
+        refreshWindowRegistry()
+        return windowRegistry.singleTrackedWindow(pid: pid)
     }
 
     private func monitorForWindow(_ window: TrackedWindow) -> Monitor {
@@ -466,5 +440,9 @@ package final class WorkspaceManager {
             }
         }
         return monitors[0]
+    }
+
+    private func refreshWindowRegistry() {
+        windowRegistry.rebuild(from: monitors)
     }
 }
