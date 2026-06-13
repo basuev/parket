@@ -161,17 +161,31 @@ package final class Hotkeys {
         guard status == noErr else { return status }
 
         let id = hotKeyID.id
-        DispatchQueue.main.async {
+        let startedAt = ProcessInfo.processInfo.systemUptime
+
+        if Thread.isMainThread {
             MainActor.assumeIsolated {
-                Hotkeys.shared.perform(id: id)
+                Hotkeys.shared.perform(id: id, startedAt: startedAt)
+            }
+        } else {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    Hotkeys.shared.perform(id: id, startedAt: startedAt)
+                }
             }
         }
         return noErr
     }
 
-    private func perform(id: UInt32) {
+    private func perform(id: UInt32, startedAt: TimeInterval) {
         guard let action = actions[id] else { return }
-        perform(action)
+        PerformanceTelemetry.traceAction(
+            action.traceName,
+            startedAt: startedAt,
+            metadata: action.traceMetadata
+        ) {
+            perform(action)
+        }
     }
 
     private func perform(_ action: HotkeyAction) {

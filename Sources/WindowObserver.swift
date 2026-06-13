@@ -72,7 +72,7 @@ package final class WindowObserver {
 
     private func observeRunningApplications() {
         for app in NSWorkspace.shared.runningApplications {
-            guard app.activationPolicy == .regular else { continue }
+            guard WindowManager.isManagedApplication(app) else { continue }
             let pid = app.processIdentifier
             observeApp(pid: pid)
             if let windows = PerformanceTelemetry.measure(.axSnapshot, { WindowManager.windows(pid: pid) }) {
@@ -84,7 +84,7 @@ package final class WindowObserver {
     private func handleLaunchNotification(_ note: Notification) {
         guard ParketRuntime.shared.isRunning else { return }
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-            app.activationPolicy == .regular
+            WindowManager.isManagedApplication(app)
         else { return }
         handleAppLaunched(app)
     }
@@ -104,7 +104,7 @@ package final class WindowObserver {
     private func handleActivateNotification(_ note: Notification) {
         guard ParketRuntime.shared.isRunning else { return }
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-            app.activationPolicy == .regular
+            WindowManager.isManagedApplication(app)
         else { return }
         WorkspaceManager.shared.followExternalFocus(pid: app.processIdentifier)
     }

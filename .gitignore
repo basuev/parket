@@ -4,3 +4,4 @@ tatami.app/
 *.zip
 .DS_Store
 benchmark-*.csv
+perf-workspace-switch-*.jsonl

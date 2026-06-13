@@ -34,6 +34,44 @@ package enum HotkeyAction: Equatable {
             return "custom#\(index)"
         }
     }
+
+    package var traceName: String {
+        switch self {
+        case .switchWorkspace:
+            return "workspace_switch"
+        case .moveWorkspace:
+            return "move_workspace"
+        case .focusMonitor:
+            return "focus_monitor"
+        case .moveWindowToMonitor:
+            return "move_monitor"
+        case .switchToLastWorkspace:
+            return "last_workspace"
+        case .focusNext:
+            return "focus_next"
+        case .focusPrev:
+            return "focus_prev"
+        case .swapMaster:
+            return "swap_master"
+        case .toggleLayout:
+            return "toggle_layout"
+        case .customCommand:
+            return "custom_command"
+        }
+    }
+
+    package var traceMetadata: [String: Int] {
+        switch self {
+        case .switchWorkspace(let index), .moveWorkspace(let index):
+            return ["target_workspace": index + 1]
+        case .focusMonitor(let offset), .moveWindowToMonitor(let offset):
+            return ["monitor_offset": offset]
+        case .customCommand(let index, _):
+            return ["custom_index": index]
+        default:
+            return [:]
+        }
+    }
 }
 
 package struct HotkeyChord: Hashable, Equatable {

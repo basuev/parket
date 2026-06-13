@@ -15,6 +15,13 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if ProcessInfo.processInfo.environment["PARKET_HARNESS_MODE"] == "workspace-switch" {
+            makeWorkspaceSwitchWindows()
+            print("parket-harness-app ready pid=\(ProcessInfo.processInfo.processIdentifier)")
+            fflush(stdout)
+            return
+        }
+
         let first = makeWindow(
             title: "Harness One", frame: NSRect(x: 120, y: 420, width: 640, height: 420), tabGroup: "tabs")
         let second = makeWindow(
@@ -41,6 +48,29 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
         windows.append(contentsOf: [first, second, tab, minimized, panel])
         print("parket-harness-app ready pid=\(ProcessInfo.processInfo.processIdentifier)")
         fflush(stdout)
+    }
+
+    private func makeWorkspaceSwitchWindows() {
+        let count =
+            ProcessInfo.processInfo.environment["PARKET_HARNESS_WINDOW_COUNT"].flatMap(Int.init) ?? 27
+
+        for index in 0..<count {
+            let column = index % 9
+            let row = index / 9
+            let frame = NSRect(
+                x: 80 + CGFloat(column) * 90,
+                y: 120 + CGFloat(row) * 80,
+                width: 420,
+                height: 260
+            )
+            windows.append(
+                makeWindow(
+                    title: "Harness Perf \(index + 1)",
+                    frame: frame,
+                    tabGroup: "perf-\(index + 1)"
+                )
+            )
+        }
     }
 
     private func makeWindow(title: String, frame: NSRect, tabGroup: String) -> NSWindow {

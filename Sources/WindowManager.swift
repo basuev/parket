@@ -139,10 +139,18 @@ enum WindowManager {
     private static let appliedGeometryTolerance: CGFloat = 0.5
     private static var appliedGeometry: [CFHashCode: AppliedGeometry] = [:]
 
+    static func isManagedApplication(_ app: NSRunningApplication) -> Bool {
+        guard app.activationPolicy == .regular else { return false }
+        guard let bundleID = ProcessInfo.processInfo.environment["PARKET_MANAGED_BUNDLE_ID"],
+            !bundleID.isEmpty
+        else { return true }
+        return app.bundleIdentifier == bundleID
+    }
+
     static func allWindows() -> [TrackedWindow] {
         var result: [TrackedWindow] = []
         for app in NSWorkspace.shared.runningApplications {
-            guard app.activationPolicy == .regular else { continue }
+            guard isManagedApplication(app) else { continue }
             let pid = app.processIdentifier
             let appRef = AXUIElementCreateApplication(pid)
 
@@ -186,6 +194,7 @@ enum WindowManager {
 
     static func focusedWindow() -> TrackedWindow? {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return nil }
+        guard isManagedApplication(frontApp) else { return nil }
         let pid = frontApp.processIdentifier
         return focusedWindow(pid: pid)
     }
