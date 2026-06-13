@@ -4,6 +4,10 @@ import AppKit
 @MainActor
 final class HarnessApp: NSObject, NSApplicationDelegate {
     private var windows: [NSWindow] = []
+    private var churnWindows: [NSWindow] = []
+    private var churnTimer: Timer?
+    private var focusTimer: Timer?
+    private var focusIndex = 0
 
     static func main() {
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -15,8 +19,16 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if ProcessInfo.processInfo.environment["PARKET_HARNESS_MODE"] == "workspace-switch" {
+        let mode = ProcessInfo.processInfo.environment["PARKET_HARNESS_MODE"]
+        if mode == "workspace-switch" {
             makeWorkspaceSwitchWindows()
+            print("parket-harness-app ready pid=\(ProcessInfo.processInfo.processIdentifier)")
+            fflush(stdout)
+            return
+        }
+
+        if mode == "focus-check" {
+            makeFocusCheckWindows()
             print("parket-harness-app ready pid=\(ProcessInfo.processInfo.processIdentifier)")
             fflush(stdout)
             return
@@ -51,26 +63,143 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
     }
 
     private func makeWorkspaceSwitchWindows() {
+        let environment = ProcessInfo.processInfo.environment
         let count =
-            ProcessInfo.processInfo.environment["PARKET_HARNESS_WINDOW_COUNT"].flatMap(Int.init) ?? 27
+            environment["PARKET_HARNESS_WINDOW_COUNT"].flatMap(Int.init) ?? 27
+        let titlePrefix = environment["PARKET_HARNESS_TITLE_PREFIX"] ?? "Harness Perf"
+        let nativeTabs = environmentFlag("PARKET_HARNESS_NATIVE_TABS")
+        let distributeScreens = environmentFlag("PARKET_HARNESS_DISTRIBUTE_SCREENS")
 
         for index in 0..<count {
-            let column = index % 9
-            let row = index / 9
-            let frame = NSRect(
-                x: 80 + CGFloat(column) * 90,
-                y: 120 + CGFloat(row) * 80,
-                width: 420,
-                height: 260
-            )
-            windows.append(
-                makeWindow(
-                    title: "Harness Perf \(index + 1)",
-                    frame: frame,
-                    tabGroup: "perf-\(index + 1)"
+            let frame = workspaceFrame(index: index, distributeScreens: distributeScreens)
+            if nativeTabs {
+                windows.append(
+                    makeWindow(
+                        title: "\(titlePrefix) \(index + 1)A",
+                        frame: frame,
+                        tabGroup: "perf-\(index + 1)"
+                    )
                 )
+                windows.append(
+                    makeWindow(
+                        title: "\(titlePrefix) \(index + 1)B",
+                        frame: frame,
+                        tabGroup: "perf-\(index + 1)"
+                    )
+                )
+            } else {
+                windows.append(
+                    makeWindow(
+                        title: "\(titlePrefix) \(index + 1)",
+                        frame: frame,
+                        tabGroup: "perf-\(index + 1)"
+                    )
+                )
+            }
+        }
+
+        if environmentFlag("PARKET_HARNESS_CHURN") {
+            startChurn(titlePrefix: titlePrefix)
+        }
+
+        if environmentFlag("PARKET_HARNESS_FOCUS_THRASH") {
+            startFocusThrash()
+        }
+    }
+
+    private func makeFocusCheckWindows() {
+        windows.append(
+            makeWindow(
+                title: "Focus Normal 1",
+                frame: NSRect(x: 90, y: 460, width: 520, height: 320),
+                tabGroup: "focus-normal-1"
+            )
+        )
+        windows.append(
+            makeWindow(
+                title: "Focus Normal 2",
+                frame: NSRect(x: 650, y: 460, width: 520, height: 320),
+                tabGroup: "focus-normal-2"
+            )
+        )
+        windows.append(
+            makeWindow(
+                title: "Focus Normal 3",
+                frame: NSRect(x: 370, y: 120, width: 520, height: 320),
+                tabGroup: "focus-normal-3"
+            )
+        )
+
+        let nativeFrame = NSRect(x: 930, y: 120, width: 520, height: 320)
+        windows.append(makeWindow(title: "Focus Native A", frame: nativeFrame, tabGroup: "focus-native"))
+        windows.append(makeWindow(title: "Focus Native B", frame: nativeFrame, tabGroup: "focus-native"))
+    }
+
+    private func workspaceFrame(index: Int, distributeScreens: Bool) -> NSRect {
+        if distributeScreens, !NSScreen.screens.isEmpty {
+            let screen = NSScreen.screens[index % NSScreen.screens.count]
+            let frame = screen.visibleFrame
+            let column = index % 4
+            let row = (index / max(NSScreen.screens.count, 1)) % 4
+            return NSRect(
+                x: frame.minX + 60 + CGFloat(column) * 90,
+                y: frame.minY + 80 + CGFloat(row) * 80,
+                width: min(420, frame.width - 120),
+                height: min(260, frame.height - 160)
             )
         }
+
+        let column = index % 9
+        let row = index / 9
+        return NSRect(
+            x: 80 + CGFloat(column) * 90,
+            y: 120 + CGFloat(row) * 80,
+            width: 420,
+            height: 260
+        )
+    }
+
+    private func startChurn(titlePrefix: String) {
+        churnTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.toggleChurnWindow(titlePrefix: titlePrefix)
+            }
+        }
+    }
+
+    private func toggleChurnWindow(titlePrefix: String) {
+        if let window = churnWindows.popLast() {
+            window.close()
+            return
+        }
+
+        let index = windows.count + churnWindows.count + 1
+        let window = makeWindow(
+            title: "\(titlePrefix) Churn \(index)",
+            frame: NSRect(x: 160, y: 180, width: 380, height: 240),
+            tabGroup: "churn-\(index)"
+        )
+        churnWindows.append(window)
+    }
+
+    private func startFocusThrash() {
+        focusTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.focusNextWindow()
+            }
+        }
+    }
+
+    private func focusNextWindow() {
+        let candidates = windows.filter { $0.isVisible && !$0.title.contains("Churn") }
+        guard !candidates.isEmpty else { return }
+        focusIndex = (focusIndex + 1) % candidates.count
+        candidates[focusIndex].makeKeyAndOrderFront(nil)
+    }
+
+    private func environmentFlag(_ name: String) -> Bool {
+        guard let value = ProcessInfo.processInfo.environment[name]?.lowercased() else { return false }
+        return value == "1" || value == "true" || value == "yes"
     }
 
     private func makeWindow(title: String, frame: NSRect, tabGroup: String) -> NSWindow {

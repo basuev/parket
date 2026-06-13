@@ -5,3 +5,4 @@ tatami.app/
 .DS_Store
 benchmark-*.csv
 perf-workspace-switch-*.jsonl
+focus-local-*.jsonl

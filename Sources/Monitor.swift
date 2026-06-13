@@ -88,12 +88,13 @@ package final class Monitor {
         }
     }
 
-    func moveActiveWindowTo(_ index: Int) {
-        guard !WorkspaceManager.shared.isTilingPaused else { return }
-        guard index >= 0, index < Config.shared.workspaceCount, index != active else { return }
-        guard let focused = WindowManager.focusedWindow() else { return }
+    @discardableResult
+    func moveActiveWindowTo(_ index: Int) -> TrackedWindow? {
+        guard !WorkspaceManager.shared.isTilingPaused else { return nil }
+        guard index >= 0, index < Config.shared.workspaceCount, index != active else { return nil }
+        guard let focused = WindowManager.focusedWindow() else { return nil }
 
-        guard let i = workspaces[active].firstIndex(of: focused) else { return }
+        guard let i = workspaces[active].firstIndex(of: focused) else { return nil }
         let moved = focused.keepingMembers(from: workspaces[active][i])
         workspaces[active].remove(at: i)
         workspaces[index].insert(moved, at: 0)
@@ -104,6 +105,7 @@ package final class Monitor {
         if let next = workspaces[active].first {
             next.focus()
         }
+        return moved
     }
 
     @discardableResult
@@ -361,6 +363,7 @@ package final class Monitor {
         let idx = min(focusedIndices[active], windows.count - 1)
         let target = windows[idx]
         if afterWorkspaceSwitch {
+            WorkspaceManager.shared.suppressExternalFocusFollow()
             target.focusAfterWorkspaceSwitch()
         } else {
             target.focus()

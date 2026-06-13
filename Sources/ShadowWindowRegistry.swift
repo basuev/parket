@@ -14,6 +14,7 @@ final class ShadowWindowRegistry {
     }
 
     private var entriesByPID: [pid_t: [Entry]] = [:]
+    private var focusedEntry: Entry?
 
     init() {}
 
@@ -34,6 +35,42 @@ final class ShadowWindowRegistry {
             }
         }
         entriesByPID = next
+        guard let focusedEntry else { return }
+        self.focusedEntry = locate(focusedEntry.window).map {
+            Entry(window: focusedEntry.window, location: $0)
+        }
+    }
+
+    func reconcile(pid: pid_t, from monitors: [Monitor]) {
+        entriesByPID[pid] = entries(in: monitors).filter { $0.window.pid == pid }
+        guard let focused = focusedEntry, focused.window.pid == pid else { return }
+        focusedEntry = entriesByPID[pid]?.first { $0.window == focused.window }
+    }
+
+    func upsert(_ window: TrackedWindow, at location: WindowLocation) {
+        entriesByPID[window.pid, default: []].removeAll { $0.window == window }
+        entriesByPID[window.pid, default: []].append(Entry(window: window, location: location))
+        guard focusedEntry?.window == window else { return }
+        focusedEntry = Entry(window: window, location: location)
+    }
+
+    func remove(_ window: TrackedWindow) {
+        entriesByPID[window.pid]?.removeAll { $0.window == window }
+        if focusedEntry?.window == window {
+            focusedEntry = nil
+        }
+    }
+
+    func remove(pid: pid_t) {
+        entriesByPID.removeValue(forKey: pid)
+        if focusedEntry?.window.pid == pid {
+            focusedEntry = nil
+        }
+    }
+
+    func recordFocus(_ window: TrackedWindow, at location: WindowLocation) {
+        focusedEntry = Entry(window: window, location: location)
+        upsert(window, at: location)
     }
 
     func locate(_ window: TrackedWindow) -> WindowLocation? {
@@ -54,5 +91,24 @@ final class ShadowWindowRegistry {
         }
         guard let result else { return nil }
         return (result.window, result.location)
+    }
+
+    private func entries(in monitors: [Monitor]) -> [Entry] {
+        var result: [Entry] = []
+        for monitorIndex in monitors.indices {
+            let monitor = monitors[monitorIndex]
+            for workspaceIndex in monitor.workspaces.indices {
+                for windowIndex in monitor.workspaces[workspaceIndex].indices {
+                    let window = monitor.workspaces[workspaceIndex][windowIndex]
+                    let location = WindowLocation(
+                        monitorIndex: monitorIndex,
+                        workspaceIndex: workspaceIndex,
+                        windowIndex: windowIndex
+                    )
+                    result.append(Entry(window: window, location: location))
+                }
+            }
+        }
+        return result
     }
 }

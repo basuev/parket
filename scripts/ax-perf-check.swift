@@ -26,20 +26,26 @@ guard AXIsProcessTrusted() else {
 }
 
 guard
-    let app = NSWorkspace.shared.runningApplications.first(where: {
-        $0.bundleIdentifier == "com.parket.harness"
-    })
+    !NSWorkspace.shared.runningApplications.filter({ $0.bundleIdentifier == "com.parket.harness" }).isEmpty
 else {
     fail("ParketHarnessApp is not running")
 }
 
-let appRef = AXUIElementCreateApplication(app.processIdentifier)
-guard let rawWindows = attribute(appRef, kAXWindowsAttribute as CFString) as? [AXUIElement] else {
+let rawWindows = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == "com.parket.harness" }
+    .flatMap { app -> [AXUIElement] in
+        let appRef = AXUIElementCreateApplication(app.processIdentifier)
+        return attribute(appRef, kAXWindowsAttribute as CFString) as? [AXUIElement] ?? []
+    }
+
+guard !rawWindows.isEmpty else {
     fail("could not read fixture windows")
 }
 
 let standardCount = rawWindows.filter(isStandardWindow).count
-let expectedCount = ProcessInfo.processInfo.environment["PARKET_HARNESS_WINDOW_COUNT"].flatMap(Int.init) ?? 27
+let expectedCount =
+    ProcessInfo.processInfo.environment["PARKET_HARNESS_EXPECTED_STANDARD_COUNT"].flatMap(Int.init)
+    ?? ProcessInfo.processInfo.environment["PARKET_HARNESS_WINDOW_COUNT"].flatMap(Int.init)
+    ?? 27
 guard standardCount >= expectedCount else {
     fail("expected at least \(expectedCount) standard fixture windows, got \(standardCount)")
 }

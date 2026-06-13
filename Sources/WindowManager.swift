@@ -87,23 +87,38 @@ struct TrackedWindow: Equatable {
 
     @MainActor
     func focus() {
-        activateApplication()
-        raise()
+        activateApplicationIfNeeded()
+        raiseIfNeeded()
         applyFocusAttributes()
+        WindowManager.recordExpectedFocus(self)
     }
 
     @MainActor
     func focusAfterWorkspaceSwitch() {
-        activateApplication()
-        raise()
+        activateApplicationIfNeeded()
+        raiseIfNeeded()
         guard requiresExplicitFocusAttributes else { return }
         applyFocusAttributes()
+        WindowManager.recordExpectedFocus(self)
     }
 
     @MainActor
-    private func activateApplication() {
+    private func activateApplicationIfNeeded() {
+        guard !WindowManager.isFrontmostApplication(pid: pid) else { return }
         if let app = NSRunningApplication(processIdentifier: pid) {
             app.activate()
+        }
+    }
+
+    @MainActor
+    private func raiseIfNeeded() {
+        guard
+            WindowManager.isFrontmostApplication(pid: pid),
+            WindowManager.isExpectedFocused(self),
+            WindowManager.isActuallyFocused(self)
+        else {
+            raise()
+            return
         }
     }
 
@@ -117,7 +132,9 @@ struct TrackedWindow: Equatable {
 
     @MainActor
     func raise() {
-        WindowManager.performAction(element, kAXRaiseAction as CFString)
+        if WindowManager.performAction(element, kAXRaiseAction as CFString) == .success {
+            WindowManager.recordExpectedFocus(self)
+        }
     }
 
     @MainActor
@@ -160,6 +177,7 @@ enum WindowManager {
 
     private static let appliedGeometryTolerance: CGFloat = 0.5
     private static var appliedGeometry: [CFHashCode: AppliedGeometry] = [:]
+    private static var expectedFocusedWindow: TrackedWindow?
 
     static func isManagedApplication(_ app: NSRunningApplication) -> Bool {
         guard app.activationPolicy == .regular else { return false }
@@ -228,6 +246,29 @@ enum WindowManager {
             return focused
         }
         return trackedWindow(appRef, kAXFocusedWindowAttribute as CFString, pid: pid)
+    }
+
+    static func isFrontmostApplication(pid: pid_t) -> Bool {
+        NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
+    }
+
+    static func recordExpectedFocus(_ window: TrackedWindow) {
+        expectedFocusedWindow = window
+    }
+
+    static func clearExpectedFocus(pid: pid_t) {
+        guard expectedFocusedWindow?.pid == pid else { return }
+        expectedFocusedWindow = nil
+    }
+
+    static func isExpectedFocused(_ window: TrackedWindow) -> Bool {
+        guard let expected = expectedFocusedWindow else { return false }
+        return expected.pid == window.pid && CFEqual(expected.focusElement, window.focusElement)
+    }
+
+    static func isActuallyFocused(_ window: TrackedWindow) -> Bool {
+        guard let focused = focusedWindow(pid: window.pid) else { return false }
+        return focused.pid == window.pid && CFEqual(focused.focusElement, window.focusElement)
     }
 
     private static func trackedWindow(_ appRef: AXUIElement, _ attribute: CFString, pid: pid_t) -> TrackedWindow? {

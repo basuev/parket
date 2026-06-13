@@ -27,6 +27,10 @@ func value(after flag: String, default defaultValue: Int) -> Int {
     return Int(args[index + 1]) ?? defaultValue
 }
 
+func hasFlag(_ flag: String) -> Bool {
+    CommandLine.arguments.contains(flag)
+}
+
 func post(number: Int, shift: Bool, delayMicroseconds: useconds_t) {
     guard let keyCode = keyCodes[number] else {
         fail("unsupported workspace \(number)")
@@ -53,11 +57,12 @@ func post(number: Int, shift: Bool, delayMicroseconds: useconds_t) {
 
 let args = CommandLine.arguments
 guard args.count >= 2 else {
-    fail("usage: send-hotkeys.swift setup|cycle [options]")
+    fail("usage: send-hotkeys.swift setup|cycle|press [options]")
 }
 
 let mode = args[1]
 let workspaceCount = min(max(value(after: "--workspaces", default: 9), 1), 9)
+let workspace = min(max(value(after: "--workspace", default: 1), 1), 9)
 let windowsPerWorkspace = max(value(after: "--windows-per-workspace", default: 3), 1)
 let rounds = max(value(after: "--rounds", default: 20), 1)
 let delayMicroseconds = useconds_t(max(value(after: "--delay-ms", default: 20), 0) * 1000)
@@ -80,6 +85,8 @@ case "cycle":
         }
         post(number: 1, shift: false, delayMicroseconds: delayMicroseconds)
     }
+case "press":
+    post(number: workspace, shift: hasFlag("--shift"), delayMicroseconds: delayMicroseconds)
 default:
-    fail("usage: send-hotkeys.swift setup|cycle [options]")
+    fail("usage: send-hotkeys.swift setup|cycle|press [options]")
 }

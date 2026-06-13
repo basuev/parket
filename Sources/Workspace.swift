@@ -10,12 +10,14 @@ package final class WorkspaceManager {
     private static let screenChangeMaxAttempts = 8
     private static let focusFollowRetryDelay: TimeInterval = 0.015
     private static let focusFollowMaxAttempts = 5
+    private static let internalFocusSuppressionDelay: TimeInterval = 0.16
 
     private(set) var monitors: [Monitor] = []
     private(set) var focusedMonitorIndex: Int = 0
     package private(set) var isTilingPaused = false
     private var screenChangeWork: DispatchWorkItem?
     private var focusFollowWork: DispatchWorkItem?
+    private var ignoreExternalFocusUntil: TimeInterval = 0
     private let windowRegistry = ShadowWindowRegistry()
 
     var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
@@ -54,8 +56,9 @@ package final class WorkspaceManager {
 
     func moveActiveWindowTo(_ index: Int) {
         guard !isTilingPaused else { return }
-        focusedMonitor.moveActiveWindowTo(index)
-        refreshWindowRegistry()
+        if let moved = focusedMonitor.moveActiveWindowTo(index) {
+            refreshWindowRegistry(pid: moved.pid)
+        }
         StatusBar.shared.update()
     }
 
@@ -65,18 +68,18 @@ package final class WorkspaceManager {
             let result = monitor.updateExistingWindow(window)
             if result != .missing {
                 if result == .replaced {
-                    refreshWindowRegistry()
+                    refreshWindowRegistry(pid: window.pid)
                 }
                 return result
             }
         }
         let result = focusedMonitor.addWindow(window)
         if result == .inserted {
-            refreshWindowRegistry()
+            refreshWindowRegistry(pid: window.pid)
             StatusBar.shared.update()
         }
         if result == .replaced {
-            refreshWindowRegistry()
+            refreshWindowRegistry(pid: window.pid)
         }
         return result
     }
@@ -95,13 +98,15 @@ package final class WorkspaceManager {
         }
 
         if changed {
-            refreshWindowRegistry()
+            refreshWindowRegistry(pid: pid)
             StatusBar.shared.update()
         }
     }
 
     func removeWindow(pid: pid_t) {
         removeWindows { $0.pid == pid }
+        windowRegistry.remove(pid: pid)
+        WindowManager.clearExpectedFocus(pid: pid)
     }
 
     func removeWindow(_ window: TrackedWindow) {
@@ -165,7 +170,7 @@ package final class WorkspaceManager {
         target.retile(validate: false)
 
         focusedMonitorIndex = targetIndex
-        refreshWindowRegistry()
+        refreshWindowRegistry(pid: moved.pid)
         moved.focus()
         StatusBar.shared.update()
     }
@@ -178,6 +183,13 @@ package final class WorkspaceManager {
                 self.startExternalFocus(pid: pid)
             }
         }
+    }
+
+    func suppressExternalFocusFollow() {
+        ignoreExternalFocusUntil = max(
+            ignoreExternalFocusUntil,
+            ProcessInfo.processInfo.systemUptime + Self.internalFocusSuppressionDelay
+        )
     }
 
     func handleWindowGeometryChange(pid: pid_t, element: AXUIElement) {
@@ -202,6 +214,7 @@ package final class WorkspaceManager {
 
     private func startExternalFocus(pid: pid_t) {
         guard !isTilingPaused else { return }
+        guard !shouldSuppressExternalFocusFollow() else { return }
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
         focusFollowWork?.cancel()
         performExternalFocus(pid: pid, attempt: 0)
@@ -219,6 +232,7 @@ package final class WorkspaceManager {
     private func performExternalFocus(pid: pid_t, attempt: Int) {
         focusFollowWork = nil
         guard !isTilingPaused,
+            !shouldSuppressExternalFocusFollow(),
             !monitors.isEmpty,
             NSWorkspace.shared.frontmostApplication?.processIdentifier == pid
         else { return }
@@ -246,18 +260,29 @@ package final class WorkspaceManager {
                 monitor.focusedIndices[monitor.active] = location.windowIndex
             }
             monitor.rememberFocusedWindow(window)
+            windowRegistry.recordFocus(window, at: location)
+            WindowManager.recordExpectedFocus(window)
             StatusBar.shared.update()
             return
         }
 
         focusedMonitorIndex = location.monitorIndex
         monitor.revealWorkspace(location.workspaceIndex, focusing: window)
+        refreshWindowRegistry(pid: window.pid)
+        if let updatedLocation = locateWindow(window) {
+            windowRegistry.recordFocus(window, at: updatedLocation)
+        }
+        WindowManager.recordExpectedFocus(window)
         StatusBar.shared.update()
     }
 
     private func retryExternalFocus(pid: pid_t, attempt: Int) {
         guard attempt < Self.focusFollowMaxAttempts else { return }
         scheduleExternalFocus(pid: pid, attempt: attempt + 1)
+    }
+
+    private func shouldSuppressExternalFocusFollow() -> Bool {
+        ProcessInfo.processInfo.systemUptime < ignoreExternalFocusUntil
     }
 
     package func handleScreenChange() {
@@ -444,5 +469,9 @@ package final class WorkspaceManager {
 
     private func refreshWindowRegistry() {
         windowRegistry.rebuild(from: monitors)
+    }
+
+    private func refreshWindowRegistry(pid: pid_t) {
+        windowRegistry.reconcile(pid: pid, from: monitors)
     }
 }

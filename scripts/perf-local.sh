@@ -7,9 +7,15 @@ ROUNDS=20
 WARMUP_ROUNDS=2
 STRESS_DELAY_MS=10
 SETUP_DELAY_MS=60
+APP_INSTANCES=1
+NATIVE_TABS=0
+CHURN=0
+FOCUS_THRASH=0
+DISTRIBUTE_SCREENS=0
+SCENARIO_LABEL=workspace-switch
 
 usage() {
-    echo "usage: $0 workspace-switch [--rounds N] [--workspaces N] [--windows-per-workspace N] [--delay-ms N]"
+    echo "usage: $0 workspace-switch|matrix [--rounds N] [--workspaces N] [--windows-per-workspace N] [--delay-ms N] [--app-instances N] [--native-tabs] [--churn] [--focus-thrash] [--distribute-screens] [--label NAME]"
     exit 1
 }
 
@@ -32,14 +38,14 @@ wait_for_perf_fixture() {
     local attempt
     for attempt in {1..20}; do
         if pgrep -x ParketHarnessApp >/dev/null \
-            && PARKET_HARNESS_WINDOW_COUNT="$window_count" swift -swift-version 6 scripts/ax-perf-check.swift >/dev/null 2>&1
+            && PARKET_HARNESS_EXPECTED_STANDARD_COUNT="$expected_standard_count" swift -swift-version 6 scripts/ax-perf-check.swift >/dev/null 2>&1
         then
-            PARKET_HARNESS_WINDOW_COUNT="$window_count" swift -swift-version 6 scripts/ax-perf-check.swift
+            PARKET_HARNESS_EXPECTED_STANDARD_COUNT="$expected_standard_count" swift -swift-version 6 scripts/ax-perf-check.swift
             return 0
         fi
         sleep 0.5
     done
-    PARKET_HARNESS_WINDOW_COUNT="$window_count" swift -swift-version 6 scripts/ax-perf-check.swift >&2 || true
+    PARKET_HARNESS_EXPECTED_STANDARD_COUNT="$expected_standard_count" swift -swift-version 6 scripts/ax-perf-check.swift >&2 || true
     return 1
 }
 
@@ -142,6 +148,32 @@ summarize_workspace_switch() {
     }' "$trace"
 }
 
+screen_count() {
+    swift -e 'import AppKit; print(NSScreen.screens.count)'
+}
+
+run_matrix_case() {
+    local label="$1"
+    shift
+    echo "perf-local matrix: $label"
+    bash "$0" workspace-switch --label "$label" "$@"
+}
+
+run_matrix() {
+    run_matrix_case default --rounds 20 --workspaces 9 --windows-per-workspace 3 --delay-ms 10
+    run_matrix_case large-9x8 --rounds 8 --workspaces 9 --windows-per-workspace 8 --delay-ms 10
+    run_matrix_case multi-app --rounds 8 --workspaces 9 --windows-per-workspace 3 --delay-ms 10 --app-instances 2
+    run_matrix_case native-tabs --rounds 8 --workspaces 9 --windows-per-workspace 3 --delay-ms 10 --native-tabs
+    run_matrix_case churn --rounds 8 --workspaces 9 --windows-per-workspace 3 --delay-ms 10 --churn
+    run_matrix_case focus-thrash --rounds 8 --workspaces 9 --windows-per-workspace 3 --delay-ms 10 --focus-thrash
+
+    if [[ "$(screen_count)" -gt 1 ]]; then
+        run_matrix_case multi-monitor --rounds 8 --workspaces 9 --windows-per-workspace 3 --delay-ms 10 --distribute-screens
+    else
+        echo "perf-local matrix: multi-monitor skipped, only one display is available"
+    fi
+}
+
 run_workspace_switch() {
     require_accessibility
 
@@ -159,14 +191,28 @@ run_workspace_switch() {
     trace="perf-workspace-switch-$timestamp.jsonl"
     tmp_home="$tmp_dir/home"
     window_count=$((WORKSPACE_COUNT * WINDOWS_PER_WORKSPACE))
+    expected_standard_count=$((window_count * APP_INSTANCES))
+    if [[ "$NATIVE_TABS" == "1" ]]; then
+        expected_standard_count=$((expected_standard_count * 2))
+    fi
     mkdir -p "$tmp_home"
     : >"$trace"
 
     pkill -x ParketHarnessApp 2>/dev/null || true
     sleep 1
 
-    PARKET_HARNESS_MODE=workspace-switch PARKET_HARNESS_WINDOW_COUNT="$window_count" "$executable" >/dev/null 2>&1 &
-    local fixture_pid=$!
+    local instance fixture_pid
+    for instance in $(seq 1 "$APP_INSTANCES"); do
+        PARKET_HARNESS_MODE=workspace-switch \
+            PARKET_HARNESS_WINDOW_COUNT="$window_count" \
+            PARKET_HARNESS_TITLE_PREFIX="$SCENARIO_LABEL $instance" \
+            PARKET_HARNESS_NATIVE_TABS="$NATIVE_TABS" \
+            PARKET_HARNESS_CHURN="$CHURN" \
+            PARKET_HARNESS_FOCUS_THRASH="$FOCUS_THRASH" \
+            PARKET_HARNESS_DISTRIBUTE_SCREENS="$DISTRIBUTE_SCREENS" \
+            "$executable" >/dev/null 2>&1 &
+        fixture_pid=$!
+    done
     HOME="$tmp_home" PARKET_TRACE_PATH="$trace" PARKET_MANAGED_BUNDLE_ID=com.parket.harness .build/release/parket &
     local parket_pid=$!
 
@@ -185,6 +231,7 @@ run_workspace_switch() {
     sleep 0.5
 
     summarize_workspace_switch "$trace" "$((WORKSPACE_COUNT * ROUNDS))"
+    echo "scenario: $SCENARIO_LABEL"
     echo "trace: $trace"
 }
 
@@ -216,12 +263,39 @@ case "$cmd" in
                     STRESS_DELAY_MS="$2"
                     shift 2
                     ;;
+                --app-instances)
+                    APP_INSTANCES="$2"
+                    shift 2
+                    ;;
+                --native-tabs)
+                    NATIVE_TABS=1
+                    shift
+                    ;;
+                --churn)
+                    CHURN=1
+                    shift
+                    ;;
+                --focus-thrash)
+                    FOCUS_THRASH=1
+                    shift
+                    ;;
+                --distribute-screens)
+                    DISTRIBUTE_SCREENS=1
+                    shift
+                    ;;
+                --label)
+                    SCENARIO_LABEL="$2"
+                    shift 2
+                    ;;
                 *)
                     usage
                     ;;
             esac
         done
         run_workspace_switch
+        ;;
+    matrix)
+        run_matrix
         ;;
     *)
         usage
