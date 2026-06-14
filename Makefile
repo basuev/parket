@@ -6,7 +6,7 @@ BUNDLE_ID = com.parket.app
 CODESIGN_IDENTITY ?= -
 CODESIGN_REQUIREMENTS ?= =designated => identifier "$(BUNDLE_ID)"
 
-.PHONY: build test fmt lint policy check install clean dist verify-dist notarize fixture-app smoke-local focus-local perf-local coverage perf benchmark
+.PHONY: build test fmt lint policy check install clean dist verify-dist notarize fixture-app smoke-local focus-local perf-local latency-local coverage perf benchmark
 
 build:
 	swift build --product parket -c release
@@ -15,10 +15,10 @@ test:
 	swift test --enable-swift-testing
 
 fmt:
-	swift format --recursive --in-place Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift scripts/ax-focus-check.swift scripts/ax-perf-check.swift scripts/send-hotkeys.swift Package.swift
+	swift format --recursive --in-place Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift scripts/ax-focus-check.swift scripts/ax-perf-check.swift scripts/send-hotkeys.swift scripts/workspace-latency-check.swift Package.swift
 
 lint:
-	swift format lint --recursive --strict Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift scripts/ax-focus-check.swift scripts/ax-perf-check.swift scripts/send-hotkeys.swift Package.swift
+	swift format lint --recursive --strict Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift scripts/ax-focus-check.swift scripts/ax-perf-check.swift scripts/send-hotkeys.swift scripts/workspace-latency-check.swift Package.swift
 
 policy:
 	bash scripts/policy-check.sh
@@ -63,6 +63,9 @@ focus-local:
 
 perf-local:
 	bash scripts/perf-local.sh workspace-switch
+
+latency-local:
+	bash scripts/latency-compare.sh parket
 
 clean:
 	swift package clean

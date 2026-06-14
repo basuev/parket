@@ -20,6 +20,7 @@ package final class WorkspaceManager {
     private var focusFollowWork: DispatchWorkItem?
     private var registryRefreshWorks: [pid_t: DispatchWorkItem] = [:]
     private var ignoreExternalFocusUntil: TimeInterval = 0
+    private var statusUpdateScheduled = false
     private let windowRegistry = ShadowWindowRegistry()
 
     var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
@@ -47,7 +48,7 @@ package final class WorkspaceManager {
     func switchTo(_ index: Int) {
         guard !isTilingPaused else { return }
         focusedMonitor.switchTo(index)
-        StatusBar.shared.update()
+        scheduleStatusUpdate()
     }
 
     func switchToLast() {
@@ -501,6 +502,15 @@ package final class WorkspaceManager {
 
     private func refreshWindowRegistry(pid: pid_t) {
         windowRegistry.reconcile(pid: pid, from: monitors)
+    }
+
+    private func scheduleStatusUpdate() {
+        guard !statusUpdateScheduled else { return }
+        statusUpdateScheduled = true
+        DispatchQueue.main.async { [self] in
+            statusUpdateScheduled = false
+            StatusBar.shared.update()
+        }
     }
 
     private func scheduleRegistryRefresh(pid: pid_t) {

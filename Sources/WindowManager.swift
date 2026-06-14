@@ -81,13 +81,14 @@ struct TrackedWindow: Equatable {
 
     @MainActor
     func hideOffscreen(_ screen: CGRect) {
-        setPosition(CGPoint(x: screen.origin.x + 1 - screen.width, y: screen.maxY - 1))
+        let y = WindowManager.appliedPosition(for: element)?.y ?? screen.maxY - 1
+        setPosition(CGPoint(x: screen.origin.x + 1 - screen.width, y: y))
     }
 
     @MainActor
     func setFrame(_ rect: CGRect) {
-        setPosition(rect.origin)
         setSize(rect.size)
+        setPosition(rect.origin)
     }
 
     @MainActor
@@ -117,7 +118,7 @@ struct TrackedWindow: Equatable {
             }
         }
         PerformanceTelemetry.traceSubspan("explicit_focus_attrs") {
-            if shouldApplyFocusAttributes(intent: intent) {
+            if shouldApplyFocusAttributes(intent: intent, frontmost: frontmost) {
                 applyFocusAttributes()
             }
         }
@@ -183,12 +184,12 @@ struct TrackedWindow: Equatable {
         members.count > 1 || !CFEqual(element, focusElement)
     }
 
-    private func shouldApplyFocusAttributes(intent: FocusIntent) -> Bool {
+    private func shouldApplyFocusAttributes(intent: FocusIntent, frontmost: Bool) -> Bool {
         switch intent {
         case .full:
             return true
         case .workspaceSwitch:
-            return requiresExplicitFocusAttributes
+            return requiresExplicitFocusAttributes || !frontmost
         }
     }
 }
@@ -467,6 +468,10 @@ enum WindowManager {
         var geometry = appliedGeometry[key] ?? AppliedGeometry()
         geometry.position = position
         appliedGeometry[key] = geometry
+    }
+
+    static func appliedPosition(for element: AXUIElement) -> CGPoint? {
+        appliedGeometry[elementKey(element)]?.position
     }
 
     static func recordAppliedSize(_ size: CGSize, for element: AXUIElement) {

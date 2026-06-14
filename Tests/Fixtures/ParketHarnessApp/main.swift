@@ -69,9 +69,10 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
         let titlePrefix = environment["PARKET_HARNESS_TITLE_PREFIX"] ?? "Harness Perf"
         let nativeTabs = environmentFlag("PARKET_HARNESS_NATIVE_TABS")
         let distributeScreens = environmentFlag("PARKET_HARNESS_DISTRIBUTE_SCREENS")
+        let movingCount = environment["PARKET_HARNESS_MOVING_WINDOW_COUNT"].flatMap(Int.init) ?? 0
 
         for index in 0..<count {
-            let frame = workspaceFrame(index: index, distributeScreens: distributeScreens)
+            let frame = workspaceFrame(index: index, distributeScreens: distributeScreens, movingCount: movingCount)
             if nativeTabs {
                 windows.append(
                     makeWindow(
@@ -96,6 +97,10 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
                     )
                 )
             }
+        }
+
+        if distributeScreens, movingCount > 0, windows.indices.contains(movingCount - 1) {
+            windows[movingCount - 1].makeKeyAndOrderFront(nil)
         }
 
         if environmentFlag("PARKET_HARNESS_CHURN") {
@@ -135,15 +140,31 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
         windows.append(makeWindow(title: "Focus Native B", frame: nativeFrame, tabGroup: "focus-native"))
     }
 
-    private func workspaceFrame(index: Int, distributeScreens: Bool) -> NSRect {
+    private func workspaceFrame(index: Int, distributeScreens: Bool, movingCount: Int = 0) -> NSRect {
         if distributeScreens, !NSScreen.screens.isEmpty {
-            let screen = NSScreen.screens[index % NSScreen.screens.count]
+            let screenCount = NSScreen.screens.count
+            let backgroundScreenCount = max(screenCount - 1, 1)
+            let screenIndex: Int
+            let localIndex: Int
+            if movingCount > 0 {
+                if index >= movingCount && screenCount > 1 {
+                    screenIndex = 1 + ((index - movingCount) % backgroundScreenCount)
+                    localIndex = (index - movingCount) / backgroundScreenCount
+                } else {
+                    screenIndex = 0
+                    localIndex = index
+                }
+            } else {
+                screenIndex = index % screenCount
+                localIndex = index / screenCount
+            }
+            let screen = NSScreen.screens[screenIndex]
             let frame = screen.visibleFrame
-            let column = index % 4
-            let row = (index / max(NSScreen.screens.count, 1)) % 4
+            let xRange = max(1, Int(frame.width - 540))
+            let yRange = max(1, Int(frame.height - 420))
             return NSRect(
-                x: frame.minX + 60 + CGFloat(column) * 90,
-                y: frame.minY + 80 + CGFloat(row) * 80,
+                x: frame.minX + 60 + CGFloat((localIndex * 67) % xRange),
+                y: frame.minY + 80 + CGFloat((localIndex * 59) % yRange),
                 width: min(420, frame.width - 120),
                 height: min(260, frame.height - 160)
             )

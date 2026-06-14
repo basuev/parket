@@ -6,3 +6,4 @@ tatami.app/
 benchmark-*.csv
 perf-workspace-switch-*.jsonl
 focus-local-*.jsonl
+latency-*.jsonl

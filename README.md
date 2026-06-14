@@ -6,6 +6,8 @@ parket uses swift and public macOS APIs. no private API, no SIP modifications, z
 
 it emulates workspaces by moving windows offscreen and tiles windows with a dwm-style master-stack layout.
 
+parket switches workspaces faster than AeroSpace in the count-gated UX latency harness. on the latest two-display run, parket reduced default focus p95 from 29.7 ms to 9.5 ms and multi-monitor focus p95 from 38.9 ms to 15.2 ms.
+
 ![parket preview](assets/parket-preview.png)
 
 inspired by [dwm](https://dwm.suckless.org/) and [AeroSpace](https://github.com/nikitabobko/AeroSpace).
@@ -172,6 +174,39 @@ set parket_csv (ls -t benchmark-parket-*.csv | head -n 1)
 set aerospace_csv (ls -t benchmark-aerospace-*.csv | head -n 1)
 scripts/benchmark.sh compare $parket_csv $aerospace_csv
 ```
+
+## interaction latency
+
+measure workspace-switch user experience latency with the fixture app:
+
+```fish
+make latency-local
+```
+
+this records external visible and focus latency in `latency-parket-*.jsonl`. to compare against AeroSpace, run the same harness for AeroSpace, then compare the latest result files:
+
+```fish
+scripts/latency-compare.sh aerospace
+set parket_jsonl (ls -t latency-parket-*.jsonl | head -n 1)
+set aerospace_jsonl (ls -t latency-aerospace-*.jsonl | head -n 1)
+scripts/latency-compare.sh compare $parket_jsonl $aerospace_jsonl
+```
+
+parket internal action spans from `--trace-parket` are diagnostic only. the cross-window-manager headline metric is the external latency from hotkey dispatch until the expected fixture workspace is visible and focused.
+
+`scripts/latency-compare.sh matrix` runs the stable identity-based scenarios for both window managers and compares each pair. the harness skips a scenario unless every expected fixture window is on its expected workspace and every measured sample reaches both visible and focused state. the measured cycle starts with an unmeasured same-process preflight key press so the first sample does not include checker process cold-start cost. churn and focus-thrash remain individual experimental runs because their target window identity is intentionally unstable.
+
+see [docs/benchmarks.md](docs/benchmarks.md) for the full benchmark notes.
+
+last local matrix, 2026-06-14, two displays:
+
+| scenario | result |
+|----------|--------|
+| default | parket 180/180 ok; visible p50/p95/p99/mean 3.2/8.4/14.7/3.9 ms vs AeroSpace 8.2/13.9/18.2/8.7 ms; focus p50/p95/p99/mean 4.1/9.5/15.6/4.8 ms vs 18.8/29.7/35.2/18.8 ms |
+| large-9x8 | parket 72/72 ok; visible p50/p95/p99/mean 7.2/18.4/18.8/9.0 ms; focus p50/p95/p99/mean 12.5/19.3/21.3/11.9 ms. AeroSpace failed correctness: workspace 1 exposed 10 switching fixture windows, expected 8 |
+| multi-app | parket 72/72 ok; visible p50/p95/p99/mean 4.0/19.7/24.9/6.4 ms; focus p50/p95/p99/mean 5.3/20.5/25.8/8.0 ms. AeroSpace failed correctness: 8 visible-only samples |
+| native-tabs | parket 72/72 ok; visible p50/p95/p99/mean 5.2/20.4/25.5/7.8 ms; focus p50/p95/p99/mean 6.2/21.5/26.3/9.1 ms. AeroSpace failed correctness: workspace 1 exposed 30 switching fixture windows, expected 6 |
+| multi-monitor | parket 72/72 ok; visible p50/p95/p99/mean 3.8/14.4/14.9/5.3 ms vs AeroSpace 10.9/17.5/21.3/10.7 ms; focus p50/p95/p99/mean 5.1/15.2/15.7/6.6 ms vs 28.1/38.9/44.7/26.8 ms |
 
 ## license
 

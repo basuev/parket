@@ -16,6 +16,8 @@ package final class Monitor {
 
     let displayID: CGDirectDisplayID
     var screen: NSScreen
+    private let tileFrame: CGRect
+    private let offscreenFrame: CGRect
     var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.shared.workspaceCount)
     var layouts: [Layout] = Array(repeating: .tile, count: Config.shared.workspaceCount)
     var focusedIndices: [Int] = Array(repeating: 0, count: Config.shared.workspaceCount)
@@ -25,10 +27,14 @@ package final class Monitor {
     private var geometryRetileWork: DispatchWorkItem?
     private var ignoreGeometryUntil: TimeInterval = 0
     private var geometryOperationGeneration: UInt64 = 0
+    private var focusRestoreGeneration: UInt64 = 0
+    private var moveFocusGeneration: UInt64 = 0
 
     init(displayID: CGDirectDisplayID, screen: NSScreen) {
         self.displayID = displayID
         self.screen = screen
+        tileFrame = WindowManager.screenFrame(for: screen)
+        offscreenFrame = WindowManager.screenRect(for: screen)
     }
 
     func switchTo(_ index: Int) {
@@ -40,22 +46,24 @@ package final class Monitor {
             previousActive = previous
             active = index
 
-            let screen = WindowManager.screenRect(for: self.screen)
             suppressGeometryNotifications()
-            PerformanceTelemetry.traceSubspan("hide") {
-                PerformanceTelemetry.measure(.hideWorkspace) {
-                    for win in workspaces[previous] {
-                        win.hideOffscreen(screen)
-                    }
-                }
-            }
-
             PerformanceTelemetry.traceSubspan("retile") {
                 retile(validate: false)
             }
+            PerformanceTelemetry.traceSubspan("hide") {
+                PerformanceTelemetry.measure(.hideWorkspace) {
+                    for win in workspaces[previous] {
+                        win.hideOffscreen(offscreenFrame)
+                    }
+                }
+            }
             PerformanceTelemetry.traceSubspan("focus") {
-                PerformanceTelemetry.measure(.focusRestore) {
-                    restoreFocusedWindow(afterWorkspaceSwitch: true)
+                if activeWorkspaceHasMultipleProcesses() {
+                    PerformanceTelemetry.measure(.focusRestore) {
+                        restoreFocusedWindow(afterWorkspaceSwitch: true)
+                    }
+                } else {
+                    scheduleFocusedWindowRestore(activeWorkspace: index)
                 }
             }
         }
@@ -70,11 +78,10 @@ package final class Monitor {
             previousActive = previous
             active = index
 
-            let screen = WindowManager.screenRect(for: self.screen)
             suppressGeometryNotifications()
             PerformanceTelemetry.measure(.hideWorkspace) {
                 for win in workspaces[previous] {
-                    win.hideOffscreen(screen)
+                    win.hideOffscreen(offscreenFrame)
                 }
             }
         }
@@ -101,10 +108,12 @@ package final class Monitor {
         workspaces[index].insert(moved, at: 0)
 
         retile(validate: false)
-        moved.hideOffscreen(WindowManager.screenRect(for: self.screen))
+        moved.hideOffscreen(offscreenFrame)
+        WindowManager.invalidateAppliedGeometry(moved)
 
-        if let next = workspaces[active].first {
-            next.focus()
+        let next = workspaces[active].first(where: { $0.pid == moved.pid }) ?? workspaces[active].first
+        if let next {
+            focusAfterMovingWindow(next)
         }
         return moved
     }
@@ -249,18 +258,17 @@ package final class Monitor {
 
     @discardableResult
     func retile(force: Bool = false, validate: Bool = true) -> CGRect {
-        let screen = WindowManager.screenFrame(for: self.screen)
-        guard force || !WorkspaceManager.shared.isTilingPaused else { return screen }
+        guard force || !WorkspaceManager.shared.isTilingPaused else { return tileFrame }
         return PerformanceTelemetry.measure(.retile) {
             if validate {
                 cleanActiveWorkspace()
             }
             suppressGeometryNotifications()
             Tiler.tile(
-                windows: workspaces[active], screen: screen, layout: layouts[active],
+                windows: workspaces[active], screen: tileFrame, layout: layouts[active],
                 masterRatio: Config.shared.masterRatio
             )
-            return screen
+            return tileFrame
         }
     }
 
@@ -283,8 +291,7 @@ package final class Monitor {
 
     private func activeWorkspaceMatchesLayout(tolerance: CGFloat) -> Bool {
         let windows = workspaces[active]
-        let screen = WindowManager.screenFrame(for: self.screen)
-        let frames = Tiler.calculateFrames(count: windows.count, screen: screen, layout: layouts[active])
+        let frames = Tiler.calculateFrames(count: windows.count, screen: tileFrame, layout: layouts[active])
         guard frames.count == windows.count else { return false }
 
         for i in windows.indices {
@@ -361,18 +368,65 @@ package final class Monitor {
     func restoreFocusedWindow(afterWorkspaceSwitch: Bool = false) {
         let windows = workspaces[active]
         guard !windows.isEmpty else { return }
-        let idx = min(focusedIndices[active], windows.count - 1)
+        let idx = restoredFocusIndex(in: windows, afterWorkspaceSwitch: afterWorkspaceSwitch)
         let target = windows[idx]
         if afterWorkspaceSwitch {
             WorkspaceManager.shared.suppressExternalFocusFollow()
-            target.focusAfterWorkspaceSwitch()
+            if activeWorkspaceHasMultipleProcesses() {
+                target.focus()
+            } else {
+                target.focusAfterWorkspaceSwitch()
+            }
         } else {
             target.focus()
         }
     }
 
+    private func restoredFocusIndex(in windows: [TrackedWindow], afterWorkspaceSwitch: Bool) -> Int {
+        if afterWorkspaceSwitch,
+            activeWorkspaceHasMultipleProcesses(),
+            let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+            let index = windows.firstIndex(where: { $0.pid == frontmostPID })
+        {
+            focusedIndices[active] = index
+            return index
+        }
+        return min(focusedIndices[active], windows.count - 1)
+    }
+
+    private func activeWorkspaceHasMultipleProcesses() -> Bool {
+        let windows = workspaces[active]
+        guard let first = windows.first?.pid else { return false }
+        return windows.contains { $0.pid != first }
+    }
+
+    private func focusAfterMovingWindow(_ target: TrackedWindow) {
+        moveFocusGeneration &+= 1
+        let scheduledGeneration = moveFocusGeneration
+        WorkspaceManager.shared.suppressExternalFocusFollow()
+        target.focus()
+        DispatchQueue.main.async { [self] in
+            guard moveFocusGeneration == scheduledGeneration else { return }
+            guard workspaces[active].contains(target) else { return }
+            WorkspaceManager.shared.suppressExternalFocusFollow()
+            target.focus()
+        }
+    }
+
+    private func scheduleFocusedWindowRestore(activeWorkspace expectedActive: Int) {
+        focusRestoreGeneration &+= 1
+        let scheduledGeneration = focusRestoreGeneration
+        DispatchQueue.main.async { [self] in
+            guard active == expectedActive else { return }
+            guard focusRestoreGeneration == scheduledGeneration else { return }
+            PerformanceTelemetry.measure(.focusRestore) {
+                restoreFocusedWindow(afterWorkspaceSwitch: true)
+            }
+        }
+    }
+
     func restoreAllWindows() {
-        let screen = WindowManager.screenFrame(for: self.screen)
+        let screen = tileFrame
         let center = CGPoint(
             x: screen.origin.x + screen.width / 4,
             y: screen.origin.y + screen.height / 4
