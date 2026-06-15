@@ -11,7 +11,6 @@ package final class WorkspaceManager {
     private static let screenChangePostSettleDelay: TimeInterval = 0.75
     private static let screenChangeEmptySnapshotRetryDelay: TimeInterval = 0.15
     private static let screenChangeEmptySnapshotMaxAttempts = 8
-    private static let geometryChangeSnapshotSyncDelay: TimeInterval = 0.01
     private static let focusFollowRetryDelay: TimeInterval = 0.015
     private static let focusFollowMaxAttempts = 5
     private static let internalFocusSuppressionDelay: TimeInterval = 0.16
@@ -291,11 +290,6 @@ package final class WorkspaceManager {
         windowRegistry.upsert(window, at: location)
         WindowManager.invalidateAppliedGeometry(window)
         guard monitor.active == location.workspaceIndex else { return }
-        scheduleWindowSnapshotSync(
-            pid: pid,
-            attempt: 0,
-            delay: Self.geometryChangeSnapshotSyncDelay
-        )
         monitor.scheduleCorrectiveRetile()
     }
 

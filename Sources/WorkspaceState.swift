@@ -113,16 +113,6 @@ enum ScreenChangeEmptySnapshotPolicy {
     }
 }
 
-enum WorkspaceWindowDeduplication {
-    static func unique<Element: Equatable>(_ elements: [Element]) -> [Element] {
-        var result: [Element] = []
-        for element in elements where !result.contains(element) {
-            result.append(element)
-        }
-        return result
-    }
-}
-
 enum PostSyncExternalFocusPolicy {
     static func shouldFollow(changed: Bool, closedWindow: Bool, repairedFocus: Bool) -> Bool {
         changed && !closedWindow && !repairedFocus

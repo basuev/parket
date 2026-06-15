@@ -26,10 +26,6 @@ struct TrackedWindow: Equatable {
     let pid: pid_t
     let group: WindowGroupKey
 
-    private static let stagedFrameTolerance: CGFloat = 2.0
-    private static let stagedFrameMaxAttempts = 4
-    private static let stagedFrameStepDelay: TimeInterval = 0.055
-
     private enum FocusIntent {
         case full
         case workspaceSwitch
@@ -109,7 +105,7 @@ struct TrackedWindow: Equatable {
     }
 
     @MainActor
-    func setFrame(_ rect: CGRect, staged: Bool = false) {
+    func setFrame(_ rect: CGRect) {
         for operation in WindowFrameWritePlan.operations(current: getFrame(), target: rect) {
             switch operation {
             case .position:
@@ -118,33 +114,6 @@ struct TrackedWindow: Equatable {
                 setSize(rect.size, force: true)
             }
         }
-        guard staged else { return }
-        scheduleStagedFrame(rect, attempt: 0)
-    }
-
-    @MainActor
-    private func scheduleStagedFrame(_ rect: CGRect, attempt: Int) {
-        guard attempt < Self.stagedFrameMaxAttempts else { return }
-        guard !frameMatchesTarget(rect) else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.stagedFrameStepDelay) { [self] in
-            setPosition(rect.origin, force: true)
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.stagedFrameStepDelay) { [self] in
-                setSize(rect.size, force: true)
-                DispatchQueue.main.asyncAfter(deadline: .now() + Self.stagedFrameStepDelay) { [self] in
-                    setPosition(rect.origin, force: true)
-                    scheduleStagedFrame(rect, attempt: attempt + 1)
-                }
-            }
-        }
-    }
-
-    @MainActor
-    private func frameMatchesTarget(_ rect: CGRect) -> Bool {
-        guard let frame = getFrame() else { return false }
-        return abs(frame.origin.x - rect.origin.x) <= Self.stagedFrameTolerance
-            && abs(frame.origin.y - rect.origin.y) <= Self.stagedFrameTolerance
-            && abs(frame.width - rect.width) <= Self.stagedFrameTolerance
-            && abs(frame.height - rect.height) <= Self.stagedFrameTolerance
     }
 
     @MainActor

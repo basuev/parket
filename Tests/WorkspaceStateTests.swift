@@ -131,15 +131,4 @@ struct WorkspaceStateTests {
             ))
     }
 
-    @Test func workspaceWindowDeduplicationPreservesFirstOccurrenceOrder() {
-        let windows = WorkspaceWindowDeduplication.unique([3, 1, 3, 2, 1, 4])
-
-        #expect(windows == [3, 1, 2, 4])
-    }
-
-    @Test func workspaceWindowDeduplicationKeepsUniqueWindowsUnchanged() {
-        let windows = WorkspaceWindowDeduplication.unique([1, 2, 3])
-
-        #expect(windows == [1, 2, 3])
-    }
 }
