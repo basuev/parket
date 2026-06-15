@@ -86,6 +86,43 @@ enum NewWindowPlacement {
     }
 }
 
+enum RemovedMonitorWindowMigration {
+    static func targetWorkspace(
+        sourceWorkspaceIndex: Int,
+        sourceActive: Int,
+        targetActive: Int,
+        workspaceCount: Int
+    ) -> Int {
+        guard WorkspaceBounds.isValidIndex(sourceWorkspaceIndex, count: workspaceCount) else {
+            return targetActive
+        }
+        guard sourceWorkspaceIndex != sourceActive else {
+            return targetActive
+        }
+        return sourceWorkspaceIndex
+    }
+}
+
+enum ScreenChangeEmptySnapshotPolicy {
+    static func shouldDefer(
+        windowsAreEmpty: Bool,
+        hasTrackedWindows: Bool,
+        isScreenChangeSettling: Bool
+    ) -> Bool {
+        windowsAreEmpty && hasTrackedWindows && isScreenChangeSettling
+    }
+}
+
+enum WorkspaceWindowDeduplication {
+    static func unique<Element: Equatable>(_ elements: [Element]) -> [Element] {
+        var result: [Element] = []
+        for element in elements where !result.contains(element) {
+            result.append(element)
+        }
+        return result
+    }
+}
+
 enum PostSyncExternalFocusPolicy {
     static func shouldFollow(changed: Bool, closedWindow: Bool, repairedFocus: Bool) -> Bool {
         changed && !closedWindow && !repairedFocus

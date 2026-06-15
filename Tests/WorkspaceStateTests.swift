@@ -61,4 +61,85 @@ struct WorkspaceStateTests {
 
         #expect(target == current)
     }
+
+    @Test func removedMonitorActiveWorkspaceMovesToTargetActiveWorkspace() {
+        let target = RemovedMonitorWindowMigration.targetWorkspace(
+            sourceWorkspaceIndex: 3,
+            sourceActive: 3,
+            targetActive: 1,
+            workspaceCount: 9
+        )
+
+        #expect(target == 1)
+    }
+
+    @Test func removedMonitorInactiveWorkspaceKeepsItsWorkspaceIndex() {
+        let target = RemovedMonitorWindowMigration.targetWorkspace(
+            sourceWorkspaceIndex: 4,
+            sourceActive: 3,
+            targetActive: 1,
+            workspaceCount: 9
+        )
+
+        #expect(target == 4)
+    }
+
+    @Test func removedMonitorInvalidWorkspaceFallsBackToTargetActiveWorkspace() {
+        let target = RemovedMonitorWindowMigration.targetWorkspace(
+            sourceWorkspaceIndex: 12,
+            sourceActive: 3,
+            targetActive: 1,
+            workspaceCount: 9
+        )
+
+        #expect(target == 1)
+    }
+
+    @Test func screenChangeEmptySnapshotWithTrackedWindowsDefers() {
+        #expect(
+            ScreenChangeEmptySnapshotPolicy.shouldDefer(
+                windowsAreEmpty: true,
+                hasTrackedWindows: true,
+                isScreenChangeSettling: true
+            ))
+    }
+
+    @Test func nonemptyScreenChangeSnapshotDoesNotDefer() {
+        #expect(
+            !ScreenChangeEmptySnapshotPolicy.shouldDefer(
+                windowsAreEmpty: false,
+                hasTrackedWindows: true,
+                isScreenChangeSettling: true
+            ))
+    }
+
+    @Test func emptySnapshotWithoutTrackedWindowsDoesNotDefer() {
+        #expect(
+            !ScreenChangeEmptySnapshotPolicy.shouldDefer(
+                windowsAreEmpty: true,
+                hasTrackedWindows: false,
+                isScreenChangeSettling: true
+            ))
+    }
+
+    @Test func emptySnapshotOutsideScreenChangeDoesNotDefer() {
+        #expect(
+            !ScreenChangeEmptySnapshotPolicy.shouldDefer(
+                windowsAreEmpty: true,
+                hasTrackedWindows: true,
+                isScreenChangeSettling: false
+            ))
+    }
+
+    @Test func workspaceWindowDeduplicationPreservesFirstOccurrenceOrder() {
+        let windows = WorkspaceWindowDeduplication.unique([3, 1, 3, 2, 1, 4])
+
+        #expect(windows == [3, 1, 2, 4])
+    }
+
+    @Test func workspaceWindowDeduplicationKeepsUniqueWindowsUnchanged() {
+        let windows = WorkspaceWindowDeduplication.unique([1, 2, 3])
+
+        #expect(windows == [1, 2, 3])
+    }
 }

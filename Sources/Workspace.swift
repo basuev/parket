@@ -8,6 +8,10 @@ package final class WorkspaceManager {
 
     private static let screenChangeDebounceDelay: TimeInterval = 0.25
     private static let screenChangeMaxAttempts = 8
+    private static let screenChangePostSettleDelay: TimeInterval = 0.75
+    private static let screenChangeEmptySnapshotRetryDelay: TimeInterval = 0.15
+    private static let screenChangeEmptySnapshotMaxAttempts = 8
+    private static let geometryChangeSnapshotSyncDelay: TimeInterval = 0.01
     private static let focusFollowRetryDelay: TimeInterval = 0.015
     private static let focusFollowMaxAttempts = 5
     private static let internalFocusSuppressionDelay: TimeInterval = 0.16
@@ -19,9 +23,11 @@ package final class WorkspaceManager {
     private var screenChangeWork: DispatchWorkItem?
     private var focusFollowWork: DispatchWorkItem?
     private var registryRefreshWorks: [pid_t: DispatchWorkItem] = [:]
+    private var windowSnapshotSyncWorks: [pid_t: DispatchWorkItem] = [:]
     private var pendingFocusRepairs: [pid_t: ClosedWindowFocusRepair] = [:]
     private var pendingClosedWindowPIDs: Set<pid_t> = []
     private var ignoreExternalFocusUntil: TimeInterval = 0
+    private var screenChangeSettleUntil: TimeInterval = 0
     private var statusUpdateScheduled = false
     private let windowRegistry = ShadowWindowRegistry()
 
@@ -95,6 +101,29 @@ package final class WorkspaceManager {
     }
 
     func syncWindows(pid: pid_t, windows: [TrackedWindow]) {
+        syncWindows(pid: pid, windows: windows, emptySnapshotRetryAttempt: 0)
+    }
+
+    private func syncWindows(
+        pid: pid_t,
+        windows: [TrackedWindow],
+        emptySnapshotRetryAttempt: Int
+    ) {
+        if ScreenChangeEmptySnapshotPolicy.shouldDefer(
+            windowsAreEmpty: windows.isEmpty,
+            hasTrackedWindows: hasTrackedWindows(pid: pid),
+            isScreenChangeSettling: isScreenChangeSettling()
+        ), emptySnapshotRetryAttempt < Self.screenChangeEmptySnapshotMaxAttempts {
+            scheduleWindowSnapshotSync(
+                pid: pid,
+                attempt: emptySnapshotRetryAttempt + 1,
+                delay: Self.screenChangeEmptySnapshotRetryDelay
+            )
+            return
+        }
+
+        windowSnapshotSyncWorks.removeValue(forKey: pid)?.cancel()
+
         var changed = false
         for monitor in monitors {
             if monitor.removeStaleWindows(pid: pid, current: windows) {
@@ -132,6 +161,7 @@ package final class WorkspaceManager {
             }
         }
         registryRefreshWorks.removeValue(forKey: pid)?.cancel()
+        windowSnapshotSyncWorks.removeValue(forKey: pid)?.cancel()
         pendingFocusRepairs.removeValue(forKey: pid)
         pendingClosedWindowPIDs.remove(pid)
         windowRegistry.remove(pid: pid)
@@ -261,6 +291,11 @@ package final class WorkspaceManager {
         windowRegistry.upsert(window, at: location)
         WindowManager.invalidateAppliedGeometry(window)
         guard monitor.active == location.workspaceIndex else { return }
+        scheduleWindowSnapshotSync(
+            pid: pid,
+            attempt: 0,
+            delay: Self.geometryChangeSnapshotSyncDelay
+        )
         monitor.scheduleCorrectiveRetile()
     }
 
@@ -338,6 +373,8 @@ package final class WorkspaceManager {
     }
 
     package func handleScreenChange() {
+        extendScreenChangeSettleWindow(
+            by: Self.screenChangeDebounceDelay * Double(Self.screenChangeMaxAttempts + 2))
         scheduleScreenChange(signature: WindowManager.screenTopologySignature(), attempt: 0)
     }
 
@@ -362,6 +399,7 @@ package final class WorkspaceManager {
     private func performScreenChange() {
         PerformanceTelemetry.measure(.screenChange) {
             screenChangeWork = nil
+            extendScreenChangeSettleWindow(by: Self.screenChangePostSettleDelay)
             let old = Dictionary(uniqueKeysWithValues: monitors.map { ($0.displayID, $0) })
             let focusedDisplayID = monitors.isEmpty ? 0 : focusedMonitor.displayID
             let screens = NSScreen.screens
@@ -383,10 +421,14 @@ package final class WorkspaceManager {
             let currentIDs = Set(monitors.map { $0.displayID })
             let fallbackDisplayID = primaryDisplayID()
             for (id, oldMonitor) in old where !currentIDs.contains(id) {
-                for workspace in oldMonitor.workspaces {
-                    for window in workspace {
+                for workspaceIndex in oldMonitor.workspaces.indices {
+                    for window in oldMonitor.workspaces[workspaceIndex].reversed() {
                         let target = monitorForWindow(window, snapshot: snapshot, fallbackDisplayID: fallbackDisplayID)
-                        target.workspaces[0].insert(window, at: 0)
+                        target.adoptWindowFromRemovedMonitor(
+                            window,
+                            sourceWorkspaceIndex: workspaceIndex,
+                            sourceActive: oldMonitor.active
+                        )
                     }
                 }
             }
@@ -404,6 +446,7 @@ package final class WorkspaceManager {
             }
 
             refreshWindowRegistry()
+            scheduleAllWindowSnapshotSync(delay: Self.screenChangeEmptySnapshotRetryDelay)
             StatusBar.shared.update()
         }
     }
@@ -538,6 +581,51 @@ package final class WorkspaceManager {
             }
         }
         return result
+    }
+
+    private func hasTrackedWindows(pid: pid_t) -> Bool {
+        !appWindowTargets(pid: pid).isEmpty
+    }
+
+    private func isScreenChangeSettling() -> Bool {
+        screenChangeWork != nil || ProcessInfo.processInfo.systemUptime < screenChangeSettleUntil
+    }
+
+    private func extendScreenChangeSettleWindow(by delay: TimeInterval) {
+        screenChangeSettleUntil = max(
+            screenChangeSettleUntil,
+            ProcessInfo.processInfo.systemUptime + delay
+        )
+    }
+
+    private func scheduleAllWindowSnapshotSync(delay: TimeInterval) {
+        for app in NSWorkspace.shared.runningApplications {
+            guard WindowManager.isManagedApplication(app) else { continue }
+            scheduleWindowSnapshotSync(pid: app.processIdentifier, attempt: 0, delay: delay)
+        }
+    }
+
+    private func scheduleWindowSnapshotSync(pid: pid_t, attempt: Int, delay: TimeInterval) {
+        windowSnapshotSyncWorks[pid]?.cancel()
+        let work = DispatchWorkItem { [self] in
+            windowSnapshotSyncWorks.removeValue(forKey: pid)
+            guard let windows = PerformanceTelemetry.measure(.axSnapshot, { WindowManager.windows(pid: pid) }) else {
+                if attempt < Self.screenChangeEmptySnapshotMaxAttempts {
+                    scheduleWindowSnapshotSync(
+                        pid: pid,
+                        attempt: attempt + 1,
+                        delay: Self.screenChangeEmptySnapshotRetryDelay
+                    )
+                }
+                return
+            }
+            syncWindows(pid: pid, windows: windows, emptySnapshotRetryAttempt: attempt)
+        }
+        windowSnapshotSyncWorks[pid] = work
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + delay,
+            execute: work
+        )
     }
 
     private func recordPendingFocusRepair(_ removed: RemovedWindowRecord) {

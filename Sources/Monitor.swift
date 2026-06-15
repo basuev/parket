@@ -145,6 +145,25 @@ package final class Monitor {
         return .inserted
     }
 
+    func adoptWindowFromRemovedMonitor(
+        _ window: TrackedWindow,
+        sourceWorkspaceIndex: Int,
+        sourceActive: Int
+    ) {
+        let target = RemovedMonitorWindowMigration.targetWorkspace(
+            sourceWorkspaceIndex: sourceWorkspaceIndex,
+            sourceActive: sourceActive,
+            targetActive: active,
+            workspaceCount: workspaces.count
+        )
+        guard updateExistingWindow(window) == .missing else { return }
+        workspaces[target].insert(window, at: 0)
+        if target != active {
+            window.hideOffscreen(offscreenFrame)
+            WindowManager.invalidateAppliedGeometry(window)
+        }
+    }
+
     func updateExistingWindow(_ window: TrackedWindow) -> WindowUpdate {
         for ws in 0..<workspaces.count {
             guard let i = workspaces[ws].firstIndex(of: window) else { continue }
@@ -286,6 +305,7 @@ package final class Monitor {
     func retile(force: Bool = false, validate: Bool = true) -> CGRect {
         guard force || !WorkspaceManager.shared.isTilingPaused else { return tileFrame }
         return PerformanceTelemetry.measure(.retile) {
+            deduplicateActiveWorkspace()
             if validate {
                 cleanActiveWorkspace()
             }
@@ -316,6 +336,18 @@ package final class Monitor {
             windows.append(window)
         }
         workspaces[active] = windows
+        clampFocusedIndex()
+    }
+
+    private func deduplicateActiveWorkspace() {
+        let unique = WorkspaceWindowDeduplication.unique(workspaces[active])
+        guard unique.count != workspaces[active].count else { return }
+        workspaces[active] = unique
+        clampFocusedIndex()
+    }
+
+    private func clampFocusedIndex() {
+        focusedIndices[active] = min(focusedIndices[active], max(workspaces[active].count - 1, 0))
     }
 
     private func invalidateActiveWorkspaceAppliedGeometry() {
