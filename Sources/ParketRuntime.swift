@@ -74,6 +74,16 @@ package final class ParketRuntime {
             lines.append(
                 "monitor_\(monitorIndex + 1): active=\(monitor.active + 1) layout=\(monitor.layouts[monitor.active]) windows=[\(counts)]"
             )
+            for workspaceIndex in monitor.workspaces.indices {
+                for windowIndex in monitor.workspaces[workspaceIndex].indices {
+                    let window = monitor.workspaces[workspaceIndex][windowIndex]
+                    let frame = window.getFrame().map(format) ?? "unknown"
+                    let title = sanitize(window.title() ?? "")
+                    lines.append(
+                        "window: monitor=\(monitorIndex + 1) workspace=\(workspaceIndex + 1) index=\(windowIndex) pid=\(window.pid) members=\(window.members.count) frame=\(frame) title=\(title)"
+                    )
+                }
+            }
         }
 
         return lines.joined(separator: "\n")
@@ -85,6 +95,12 @@ package final class ParketRuntime {
 
     private func format(_ value: CGFloat) -> String {
         String(format: "%.1f", Double(value))
+    }
+
+    private func sanitize(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\t", with: "\\t")
     }
 
     package func reloadConfig() {

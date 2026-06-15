@@ -28,13 +28,16 @@ package final class WorkspaceManager {
     private init() {}
 
     package func bootstrap() {
-        rebuildMonitors()
+        let screens = NSScreen.screens
+        let snapshot = WindowManager.screenSnapshot(for: screens)
+        rebuildMonitors(screens: screens, snapshot: snapshot)
         focusedMonitorIndex = 0
         let windows = PerformanceTelemetry.measure(.axSnapshot) {
             WindowManager.allWindows()
         }
+        let fallbackDisplayID = primaryDisplayID()
         for window in windows {
-            monitorForWindow(window).insertWindow(window)
+            monitorForWindow(window, snapshot: snapshot, fallbackDisplayID: fallbackDisplayID).insertWindow(window)
         }
         if !isTilingPaused {
             for monitor in monitors {
@@ -341,7 +344,9 @@ package final class WorkspaceManager {
             screenChangeWork = nil
             let old = Dictionary(uniqueKeysWithValues: monitors.map { ($0.displayID, $0) })
             let focusedDisplayID = monitors.isEmpty ? 0 : focusedMonitor.displayID
-            rebuildMonitors()
+            let screens = NSScreen.screens
+            let snapshot = WindowManager.screenSnapshot(for: screens)
+            rebuildMonitors(screens: screens, snapshot: snapshot)
 
             guard !monitors.isEmpty else {
                 focusedMonitorIndex = 0
@@ -356,10 +361,12 @@ package final class WorkspaceManager {
             }
 
             let currentIDs = Set(monitors.map { $0.displayID })
+            let fallbackDisplayID = primaryDisplayID()
             for (id, oldMonitor) in old where !currentIDs.contains(id) {
                 for workspace in oldMonitor.workspaces {
                     for window in workspace {
-                        monitorForWindow(window).workspaces[0].insert(window, at: 0)
+                        let target = monitorForWindow(window, snapshot: snapshot, fallbackDisplayID: fallbackDisplayID)
+                        target.workspaces[0].insert(window, at: 0)
                     }
                 }
             }
@@ -429,11 +436,21 @@ package final class WorkspaceManager {
     }
 
     private func rebuildMonitors() {
-        monitors = NSScreen.screens
-            .map { screen in
-                Monitor(
-                    displayID: WindowManager.displayID(for: screen),
-                    screen: screen
+        let screens = NSScreen.screens
+        rebuildMonitors(screens: screens, snapshot: WindowManager.screenSnapshot(for: screens))
+    }
+
+    private func rebuildMonitors(screens: [NSScreen], snapshot: ScreenSnapshot) {
+        monitors =
+            screens
+            .compactMap { screen -> Monitor? in
+                let displayID = WindowManager.displayID(for: screen)
+                guard let geometry = snapshot.screen(displayID: displayID) else { return nil }
+                return Monitor(
+                    displayID: displayID,
+                    screen: screen,
+                    tileFrame: geometry.visibleFrame,
+                    offscreenFrame: geometry.frame
                 )
             }
             .sorted { lhs, rhs in
@@ -478,7 +495,11 @@ package final class WorkspaceManager {
         return windowRegistry.singleTrackedWindow(pid: pid)
     }
 
-    private func monitorForWindow(_ window: TrackedWindow) -> Monitor {
+    private func monitorForWindow(
+        _ window: TrackedWindow,
+        snapshot: ScreenSnapshot? = nil,
+        fallbackDisplayID: CGDirectDisplayID? = nil
+    ) -> Monitor {
         guard !monitors.isEmpty else {
             rebuildMonitors()
             return monitors[0]
@@ -486,14 +507,13 @@ package final class WorkspaceManager {
         guard monitors.count > 1, let frame = window.getFrame() else {
             return monitors[0]
         }
-        let center = CGPoint(x: frame.midX, y: frame.midY)
-        for monitor in monitors {
-            let rect = WindowManager.screenRect(for: monitor.screen)
-            if rect.contains(center) {
-                return monitor
-            }
-        }
-        return monitors[0]
+        let snapshot = snapshot ?? WindowManager.screenSnapshot()
+        let fallback =
+            fallbackDisplayID ?? (monitors.indices.contains(focusedMonitorIndex) ? focusedMonitor.displayID : nil)
+        guard let displayID = snapshot.displayID(containingCenterOf: frame, fallback: fallback),
+            let monitor = monitors.first(where: { $0.displayID == displayID })
+        else { return monitors[0] }
+        return monitor
     }
 
     private func refreshWindowRegistry() {

@@ -33,6 +33,19 @@ struct TilerTests {
         #expect(frames[1].height == 1080)
     }
 
+    @Test func fourWindowsUseExpectedWorkspaceOneStackSlots() {
+        let display = CGRect(x: 0, y: 30, width: 2560, height: 1410)
+        let frames = Tiler.calculateFrames(count: 4, screen: display, layout: .tile, masterRatio: 0.55)
+
+        #expect(
+            frames == [
+                CGRect(x: 0, y: 30, width: 1408, height: 1410),
+                CGRect(x: 1408, y: 30, width: 1152, height: 470),
+                CGRect(x: 1408, y: 500, width: 1152, height: 470),
+                CGRect(x: 1408, y: 970, width: 1152, height: 470),
+            ])
+    }
+
     @Test func stackWindowsHaveNoPositiveGaps() {
         for count in 4...12 {
             let frames = Tiler.calculateFrames(count: count, screen: screen, layout: .tile)

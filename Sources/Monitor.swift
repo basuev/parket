@@ -30,11 +30,11 @@ package final class Monitor {
     private var focusRestoreGeneration: UInt64 = 0
     private var moveFocusGeneration: UInt64 = 0
 
-    init(displayID: CGDirectDisplayID, screen: NSScreen) {
+    init(displayID: CGDirectDisplayID, screen: NSScreen, tileFrame: CGRect, offscreenFrame: CGRect) {
         self.displayID = displayID
         self.screen = screen
-        tileFrame = WindowManager.screenFrame(for: screen)
-        offscreenFrame = WindowManager.screenRect(for: screen)
+        self.tileFrame = tileFrame
+        self.offscreenFrame = offscreenFrame
     }
 
     func switchTo(_ index: Int) {
@@ -244,6 +244,7 @@ package final class Monitor {
             guard geometryOperationGeneration == scheduledGeneration else { return }
             guard ProcessInfo.processInfo.systemUptime >= ignoreGeometryUntil else { return }
             guard !activeWorkspaceMatchesLayout(tolerance: Self.frameTolerance) else { return }
+            invalidateActiveWorkspaceAppliedGeometry()
             retile(validate: false)
         }
         geometryRetileWork = work
@@ -262,6 +263,9 @@ package final class Monitor {
         return PerformanceTelemetry.measure(.retile) {
             if validate {
                 cleanActiveWorkspace()
+            }
+            if force || validate {
+                invalidateActiveWorkspaceAppliedGeometry()
             }
             suppressGeometryNotifications()
             Tiler.tile(
@@ -287,6 +291,12 @@ package final class Monitor {
             windows.append(window)
         }
         workspaces[active] = windows
+    }
+
+    private func invalidateActiveWorkspaceAppliedGeometry() {
+        for window in workspaces[active] {
+            WindowManager.invalidateAppliedGeometry(window)
+        }
     }
 
     private func activeWorkspaceMatchesLayout(tolerance: CGFloat) -> Bool {

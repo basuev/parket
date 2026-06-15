@@ -1,6 +1,24 @@
 import AppKit
 import ApplicationServices
 
+package enum FrameWriteOperation: Equatable {
+    case position
+    case size
+}
+
+package enum WindowFrameWritePlan {
+    package static func operations(current: CGRect?, target: CGRect) -> [FrameWriteOperation] {
+        var result: [FrameWriteOperation] = []
+        if let current, target.width < current.width || target.height < current.height {
+            result.append(.size)
+        }
+        result.append(.position)
+        result.append(.size)
+        result.append(.position)
+        return result
+    }
+}
+
 struct TrackedWindow: Equatable {
     let element: AXUIElement
     let focusElement: AXUIElement
@@ -56,11 +74,11 @@ struct TrackedWindow: Equatable {
     }
 
     @MainActor
-    func setPosition(_ point: CGPoint) {
+    func setPosition(_ point: CGPoint, force: Bool = false) {
         var p = point
         guard let value = AXValueCreate(.cgPoint, &p) else { return }
         for member in members {
-            guard WindowManager.shouldApplyPosition(point, to: member) else { continue }
+            guard force || WindowManager.shouldApplyPosition(point, to: member) else { continue }
             if WindowManager.setAttributeValue(member, kAXPositionAttribute as CFString, value) == .success {
                 WindowManager.recordAppliedPosition(point, for: member)
             }
@@ -68,11 +86,11 @@ struct TrackedWindow: Equatable {
     }
 
     @MainActor
-    func setSize(_ size: CGSize) {
+    func setSize(_ size: CGSize, force: Bool = false) {
         var s = size
         guard let value = AXValueCreate(.cgSize, &s) else { return }
         for member in members {
-            guard WindowManager.shouldApplySize(size, to: member) else { continue }
+            guard force || WindowManager.shouldApplySize(size, to: member) else { continue }
             if WindowManager.setAttributeValue(member, kAXSizeAttribute as CFString, value) == .success {
                 WindowManager.recordAppliedSize(size, for: member)
             }
@@ -81,14 +99,21 @@ struct TrackedWindow: Equatable {
 
     @MainActor
     func hideOffscreen(_ screen: CGRect) {
-        let y = WindowManager.appliedPosition(for: element)?.y ?? screen.maxY - 1
+        let currentY = getFrame()?.origin.y ?? WindowManager.appliedPosition(for: element)?.y
+        let y = currentY.map { $0 >= screen.minY && $0 <= screen.maxY ? $0 : screen.maxY - 1 } ?? screen.maxY - 1
         setPosition(CGPoint(x: screen.origin.x + 1 - screen.width, y: y))
     }
 
     @MainActor
     func setFrame(_ rect: CGRect) {
-        setSize(rect.size)
-        setPosition(rect.origin)
+        for operation in WindowFrameWritePlan.operations(current: getFrame(), target: rect) {
+            switch operation {
+            case .position:
+                setPosition(rect.origin, force: true)
+            case .size:
+                setSize(rect.size, force: true)
+            }
+        }
     }
 
     @MainActor
@@ -386,11 +411,17 @@ enum WindowManager {
     }
 
     static func screenFrame(for screen: NSScreen) -> CGRect {
-        ScreenGeometry.convertRect(screen.visibleFrame, screens: screenDescriptors())
+        let snapshot = screenSnapshot()
+        let displayID = displayID(for: screen)
+        return snapshot.screen(displayID: displayID)?.visibleFrame
+            ?? ScreenGeometry.convertRect(screen.visibleFrame, screens: screenDescriptors())
     }
 
     static func screenRect(for screen: NSScreen) -> CGRect {
-        ScreenGeometry.convertRect(screen.frame, screens: screenDescriptors())
+        let snapshot = screenSnapshot()
+        let displayID = displayID(for: screen)
+        return snapshot.screen(displayID: displayID)?.frame
+            ?? ScreenGeometry.convertRect(screen.frame, screens: screenDescriptors())
     }
 
     static func displayID(for screen: NSScreen) -> CGDirectDisplayID {
@@ -398,7 +429,11 @@ enum WindowManager {
     }
 
     static func screenDescriptors() -> [ScreenDescriptor] {
-        NSScreen.screens.map { screen in
+        screenDescriptors(for: NSScreen.screens)
+    }
+
+    static func screenDescriptors(for screens: [NSScreen]) -> [ScreenDescriptor] {
+        screens.map { screen in
             ScreenDescriptor(
                 displayID: displayID(for: screen),
                 frame: screen.frame,
@@ -406,6 +441,14 @@ enum WindowManager {
                 scale: screen.backingScaleFactor
             )
         }
+    }
+
+    static func screenSnapshot() -> ScreenSnapshot {
+        ScreenSnapshot(screenDescriptors())
+    }
+
+    static func screenSnapshot(for screens: [NSScreen]) -> ScreenSnapshot {
+        ScreenSnapshot(screenDescriptors(for: screens))
     }
 
     static func screenTopologySignature() -> String {

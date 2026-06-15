@@ -15,6 +15,46 @@ package struct ScreenDescriptor: Equatable, Sendable {
     }
 }
 
+package struct ConvertedScreenDescriptor: Equatable, Sendable {
+    package let displayID: CGDirectDisplayID
+    package let frame: CGRect
+    package let visibleFrame: CGRect
+    package let scale: CGFloat
+
+    package init(displayID: CGDirectDisplayID, frame: CGRect, visibleFrame: CGRect, scale: CGFloat) {
+        self.displayID = displayID
+        self.frame = frame
+        self.visibleFrame = visibleFrame
+        self.scale = scale
+    }
+}
+
+package struct ScreenSnapshot: Equatable, Sendable {
+    package let screens: [ConvertedScreenDescriptor]
+
+    package init(_ descriptors: [ScreenDescriptor]) {
+        let topEdge = ScreenGeometry.topEdge(descriptors.map(\.frame))
+        screens = descriptors.map { descriptor in
+            ConvertedScreenDescriptor(
+                displayID: descriptor.displayID,
+                frame: ScreenGeometry.convertRect(descriptor.frame, topEdge: topEdge),
+                visibleFrame: ScreenGeometry.convertRect(descriptor.visibleFrame, topEdge: topEdge),
+                scale: descriptor.scale
+            )
+        }
+    }
+
+    package func screen(displayID: CGDirectDisplayID) -> ConvertedScreenDescriptor? {
+        screens.first { $0.displayID == displayID }
+    }
+
+    package func displayID(containingCenterOf frame: CGRect, fallback: CGDirectDisplayID?) -> CGDirectDisplayID? {
+        guard frame.width > 0, frame.height > 0 else { return fallback ?? screens.first?.displayID }
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        return screens.first { $0.frame.contains(center) }?.displayID ?? fallback ?? screens.first?.displayID
+    }
+}
+
 package enum ScreenGeometry {
     package static func convertRect(_ rect: CGRect, screens: [ScreenDescriptor]) -> CGRect {
         convertRect(rect, topEdge: topEdge(screens.map(\.frame)))
