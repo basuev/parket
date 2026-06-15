@@ -45,7 +45,8 @@ package enum WindowGrouping {
         rhsGroup: WindowGroupKey,
         rhsFrame: CGRect
     ) -> Bool {
-        lhsGroup == rhsGroup && overlapRatio(lhsFrame, rhsFrame) >= nativeTabOverlapThreshold
+        lhsGroup.pid == rhsGroup.pid
+            && overlapRatio(lhsFrame, rhsFrame) >= nativeTabOverlapThreshold
     }
 
     package static func overlapRatio(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {

@@ -23,16 +23,23 @@ struct WindowGroupTests {
         #expect(left != right)
     }
 
-    @Test func equalFramesDoNotGroupSeparateElements() {
+    @Test func equalFramesGroupNativeTabLikeElements() {
         let left = WindowGroupKey(pid: 10, identity: .element(1))
         let right = WindowGroupKey(pid: 10, identity: .element(2))
-        #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: frame))
+        #expect(WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: frame))
     }
 
-    @Test func overlapGroupsSharedNativeTabGroup() {
+    @Test func overlapGroupsNativeTabLikeElements() {
+        let shifted = CGRect(x: 260, y: 132, width: 950, height: 632)
+        let left = WindowGroupKey(pid: 10, identity: .element(1))
+        let right = WindowGroupKey(pid: 10, identity: .element(2))
+        #expect(WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
+    }
+
+    @Test func overlapGroupsNativeTabGroupElements() {
         let shifted = CGRect(x: 260, y: 132, width: 950, height: 632)
         let left = WindowGroupKey(pid: 10, identity: .nativeTabGroup(1))
-        let right = WindowGroupKey(pid: 10, identity: .nativeTabGroup(1))
+        let right = WindowGroupKey(pid: 10, identity: .nativeTabGroup(2))
         #expect(WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
     }
 
@@ -50,9 +57,10 @@ struct WindowGroupTests {
         #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
     }
 
-    @Test func equalFramesDoNotGroupDifferentNativeTabGroups() {
+    @Test func separatedFramesDoNotGroupDifferentNativeTabGroups() {
+        let shifted = CGRect(x: 1400, y: 128, width: 960, height: 640)
         let left = WindowGroupKey(pid: 10, identity: .nativeTabGroup(1))
         let right = WindowGroupKey(pid: 10, identity: .nativeTabGroup(2))
-        #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: frame))
+        #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
     }
 }
