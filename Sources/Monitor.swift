@@ -113,7 +113,7 @@ package final class Monitor {
 
         let next = workspaces[active].first(where: { $0.pid == moved.pid }) ?? workspaces[active].first
         if let next {
-            focusAfterMovingWindow(next)
+            focusAfterWindowRemoval(next)
         }
         return moved
     }
@@ -177,6 +177,20 @@ package final class Monitor {
         removeWindows { window in
             window.pid == pid && !current.contains(window)
         }
+    }
+
+    func restoreFocusAfterClosedWindow(removedWindowIndex: Int) -> TrackedWindow? {
+        let windows = workspaces[active]
+        guard
+            let targetIndex = ClosedWindowFocusRepair.targetIndex(
+                removedWindowIndex: removedWindowIndex,
+                remainingCount: windows.count
+            )
+        else { return nil }
+        focusedIndices[active] = targetIndex
+        let target = windows[targetIndex]
+        focusAfterWindowRemoval(target)
+        return target
     }
 
     func containsWindow(_ window: TrackedWindow) -> Bool {
@@ -410,7 +424,7 @@ package final class Monitor {
         return windows.contains { $0.pid != first }
     }
 
-    private func focusAfterMovingWindow(_ target: TrackedWindow) {
+    private func focusAfterWindowRemoval(_ target: TrackedWindow) {
         moveFocusGeneration &+= 1
         let scheduledGeneration = moveFocusGeneration
         WorkspaceManager.shared.suppressExternalFocusFollow()

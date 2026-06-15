@@ -6,7 +6,7 @@ BUNDLE_ID = com.parket.app
 CODESIGN_IDENTITY ?= -
 CODESIGN_REQUIREMENTS ?= =designated => identifier "$(BUNDLE_ID)"
 
-.PHONY: build test fmt lint policy check install clean dist verify-dist notarize fixture-app smoke-local focus-local perf-local latency-local coverage perf benchmark
+.PHONY: build test fmt lint policy check install clean dist verify-dist notarize fixture-app smoke-local focus-local close-focus-local perf-local latency-local coverage perf benchmark
 
 build:
 	swift build --product parket -c release
@@ -60,6 +60,9 @@ smoke-local:
 
 focus-local:
 	bash scripts/focus-local.sh
+
+close-focus-local:
+	bash scripts/close-focus-local.sh
 
 perf-local:
 	bash scripts/perf-local.sh workspace-switch

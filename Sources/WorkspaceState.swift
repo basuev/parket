@@ -45,6 +45,31 @@ package struct WorkspaceState: Equatable, Sendable {
     }
 }
 
+struct ClosedWindowFocusRepair: Equatable, Sendable {
+    let location: WindowLocation
+
+    init?(
+        removedLocation: WindowLocation,
+        focusedMonitorIndex: Int,
+        activeWorkspaceIndex: Int,
+        focusedWindowIndex: Int,
+        wasFocused: Bool
+    ) {
+        guard activeWorkspaceIndex == removedLocation.workspaceIndex else { return nil }
+        guard
+            wasFocused
+                || (focusedMonitorIndex == removedLocation.monitorIndex
+                    && focusedWindowIndex == removedLocation.windowIndex)
+        else { return nil }
+        location = removedLocation
+    }
+
+    static func targetIndex(removedWindowIndex: Int, remainingCount: Int) -> Int? {
+        guard remainingCount > 0 else { return nil }
+        return min(max(removedWindowIndex, 0), remainingCount - 1)
+    }
+}
+
 package struct MonitorWorkspaceState<Element: Equatable>: Equatable {
     package private(set) var workspaces: [[Element]]
     package private(set) var layouts: [Layout]

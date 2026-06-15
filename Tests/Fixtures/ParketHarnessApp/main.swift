@@ -34,6 +34,13 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
             return
         }
 
+        if mode == "multi-monitor-close" {
+            makeMultiMonitorCloseWindows()
+            print("parket-harness-app ready pid=\(ProcessInfo.processInfo.processIdentifier)")
+            fflush(stdout)
+            return
+        }
+
         let first = makeWindow(
             title: "Harness One", frame: NSRect(x: 120, y: 420, width: 640, height: 420), tabGroup: "tabs")
         let second = makeWindow(
@@ -138,6 +145,44 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
         let nativeFrame = NSRect(x: 930, y: 120, width: 520, height: 320)
         windows.append(makeWindow(title: "Focus Native A", frame: nativeFrame, tabGroup: "focus-native"))
         windows.append(makeWindow(title: "Focus Native B", frame: nativeFrame, tabGroup: "focus-native"))
+    }
+
+    private func makeMultiMonitorCloseWindows() {
+        let screens = NSScreen.screens
+        let primary = NSScreen.main ?? screens[0]
+        let secondary = screens.count > 1 ? screens.first { $0 !== primary } ?? screens[1] : primary
+
+        windows.append(
+            makeWindow(
+                title: "Close Main",
+                frame: closeFocusFrame(screen: primary, slot: 0),
+                tabGroup: "close-main"
+            )
+        )
+        windows.append(
+            makeWindow(
+                title: "Close Secondary Previous",
+                frame: closeFocusFrame(screen: secondary, slot: 0),
+                tabGroup: "close-secondary-previous"
+            )
+        )
+        windows.append(
+            makeWindow(
+                title: "Close Secondary Active",
+                frame: closeFocusFrame(screen: secondary, slot: 1),
+                tabGroup: "close-secondary-active"
+            )
+        )
+    }
+
+    private func closeFocusFrame(screen: NSScreen, slot: Int) -> NSRect {
+        let frame = screen.visibleFrame
+        return NSRect(
+            x: frame.minX + 70 + CGFloat(slot) * 96,
+            y: frame.minY + 110 + CGFloat(slot) * 72,
+            width: min(480, frame.width - 140),
+            height: min(300, frame.height - 180)
+        )
     }
 
     private func workspaceFrame(index: Int, distributeScreens: Bool, movingCount: Int = 0) -> NSRect {

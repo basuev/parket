@@ -19,6 +19,7 @@ package final class WorkspaceManager {
     private var screenChangeWork: DispatchWorkItem?
     private var focusFollowWork: DispatchWorkItem?
     private var registryRefreshWorks: [pid_t: DispatchWorkItem] = [:]
+    private var pendingFocusRepairs: [pid_t: ClosedWindowFocusRepair] = [:]
     private var ignoreExternalFocusUntil: TimeInterval = 0
     private var statusUpdateScheduled = false
     private let windowRegistry = ShadowWindowRegistry()
@@ -105,6 +106,9 @@ package final class WorkspaceManager {
 
         if changed {
             refreshWindowRegistry(pid: pid)
+        }
+        let repairedFocus = applyPendingFocusRepair(pid: pid)
+        if changed || repairedFocus {
             StatusBar.shared.update()
         }
     }
@@ -117,6 +121,7 @@ package final class WorkspaceManager {
             }
         }
         registryRefreshWorks.removeValue(forKey: pid)?.cancel()
+        pendingFocusRepairs.removeValue(forKey: pid)
         windowRegistry.remove(pid: pid)
         WindowManager.clearExpectedFocus(pid: pid)
         guard changed else { return }
@@ -227,7 +232,8 @@ package final class WorkspaceManager {
 
     func handleWindowDestroyed(pid: pid_t, element: AXUIElement) {
         if let removed = windowRegistry.remove(pid: pid, element: element) {
-            WindowManager.clearExpectedFocus(removed)
+            WindowManager.clearExpectedFocus(removed.window)
+            recordPendingFocusRepair(removed)
         }
         scheduleRegistryRefresh(pid: pid)
     }
@@ -493,6 +499,45 @@ package final class WorkspaceManager {
         }
         refreshWindowRegistry()
         return windowRegistry.singleTrackedWindow(pid: pid)
+    }
+
+    private func recordPendingFocusRepair(_ removed: RemovedWindowRecord) {
+        let location = removed.location
+        guard monitors.indices.contains(location.monitorIndex) else { return }
+        let monitor = monitors[location.monitorIndex]
+        guard monitor.workspaces.indices.contains(monitor.active),
+            monitor.focusedIndices.indices.contains(monitor.active)
+        else { return }
+        guard
+            let repair = ClosedWindowFocusRepair(
+                removedLocation: location,
+                focusedMonitorIndex: focusedMonitorIndex,
+                activeWorkspaceIndex: monitor.active,
+                focusedWindowIndex: monitor.focusedIndices[monitor.active],
+                wasFocused: removed.wasFocused
+            )
+        else { return }
+        pendingFocusRepairs[removed.window.pid] = repair
+        suppressExternalFocusFollow()
+    }
+
+    private func applyPendingFocusRepair(pid: pid_t) -> Bool {
+        guard let repair = pendingFocusRepairs.removeValue(forKey: pid) else { return false }
+        let location = repair.location
+        guard monitors.indices.contains(location.monitorIndex) else { return false }
+        let monitor = monitors[location.monitorIndex]
+        guard monitor.active == location.workspaceIndex else { return false }
+        guard let target = monitor.restoreFocusAfterClosedWindow(removedWindowIndex: location.windowIndex) else {
+            return false
+        }
+        focusedMonitorIndex = location.monitorIndex
+        let targetLocation = WindowLocation(
+            monitorIndex: location.monitorIndex,
+            workspaceIndex: location.workspaceIndex,
+            windowIndex: monitor.focusedIndices[monitor.active]
+        )
+        windowRegistry.recordFocus(target, at: targetLocation)
+        return true
     }
 
     private func monitorForWindow(

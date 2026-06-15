@@ -1,9 +1,15 @@
 import ApplicationServices
 
-struct WindowLocation {
+struct WindowLocation: Equatable, Sendable {
     let monitorIndex: Int
     let workspaceIndex: Int
     let windowIndex: Int
+}
+
+struct RemovedWindowRecord {
+    let window: TrackedWindow
+    let location: WindowLocation
+    let wasFocused: Bool
 }
 
 @MainActor
@@ -61,12 +67,13 @@ final class ShadowWindowRegistry {
         }
     }
 
-    func remove(pid: pid_t, element: AXUIElement) -> TrackedWindow? {
+    func remove(pid: pid_t, element: AXUIElement) -> RemovedWindowRecord? {
         guard let entry = entriesByPID[pid]?.first(where: { $0.window.containsElement(element) }) else {
             return nil
         }
+        let wasFocused = focusedEntry?.window == entry.window
         remove(entry.window)
-        return entry.window
+        return RemovedWindowRecord(window: entry.window, location: entry.location, wasFocused: wasFocused)
     }
 
     func remove(pid: pid_t) {

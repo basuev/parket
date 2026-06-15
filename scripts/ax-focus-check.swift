@@ -82,6 +82,25 @@ func focusWindow(title targetTitle: String) {
     fail("window not found: \(targetTitle)")
 }
 
+func closeWindow(title targetTitle: String) {
+    for app in harnessApps() {
+        for window in rawWindows(app) where isStandardWindow(window) && title(of: window) == targetTitle {
+            guard let value = attribute(window, kAXCloseButtonAttribute as CFString),
+                CFGetTypeID(value) == AXUIElementGetTypeID()
+            else {
+                fail("close button not found: \(targetTitle)")
+            }
+            let result = AXUIElementPerformAction(value as! AXUIElement, kAXPressAction as CFString)
+            guard result == .success else {
+                fail("close failed for \(targetTitle): \(result.rawValue)")
+            }
+            print("ax-focus-check: closed=\(targetTitle)")
+            return
+        }
+    }
+    fail("window not found: \(targetTitle)")
+}
+
 func expectFocusedTitle(_ expected: String, timeoutMilliseconds: Int) {
     let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
     var lastTitle = focusedWindowTitle()
@@ -132,7 +151,7 @@ guard !harnessApps().isEmpty else {
 
 let args = CommandLine.arguments
 guard args.count >= 2 else {
-    fail("usage: ax-focus-check.swift list|focus|expect|expect-count")
+    fail("usage: ax-focus-check.swift list|focus|close|expect|expect-count")
 }
 
 switch args[1] {
@@ -143,6 +162,9 @@ case "focus":
     guard args.count >= 3 else { fail("focus requires a title") }
     focusWindow(title: args[2])
     expectFocusedTitle(args[2], timeoutMilliseconds: intArgument(after: "--timeout-ms", default: 1500))
+case "close":
+    guard args.count >= 3 else { fail("close requires a title") }
+    closeWindow(title: args[2])
 case "expect":
     guard args.count >= 3 else { fail("expect requires a title") }
     expectFocusedTitle(args[2], timeoutMilliseconds: intArgument(after: "--timeout-ms", default: 1500))
@@ -152,5 +174,5 @@ case "expect-count":
     }
     expectWindowCount(expected, timeoutMilliseconds: intArgument(after: "--timeout-ms", default: 5000))
 default:
-    fail("usage: ax-focus-check.swift list|focus|expect|expect-count")
+    fail("usage: ax-focus-check.swift list|focus|close|expect|expect-count")
 }
