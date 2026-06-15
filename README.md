@@ -1,6 +1,6 @@
 # parket
 
-parket is a small native tiling window manager for macOS.
+A small native tiling window manager for macOS.
 
 It tiles normal document windows with a dwm-style master-stack layout and emulates workspaces by moving inactive workspace windows offscreen. It uses Swift, public macOS APIs, and zero runtime dependencies. It does not require SIP changes.
 
@@ -74,7 +74,7 @@ Bindings use the configured modifier key. Prefix a key with `shift+` to add Shif
 
 Use Reload Config from the menubar after editing.
 
-## Build
+## Build from Source
 
 ```fish
 make install
@@ -87,7 +87,7 @@ Run the required local gate:
 make check
 ```
 
-`make check` runs formatting, policy checks, tests, and a release build. See [docs/harness.md](docs/harness.md) for smoke and latency harnesses.
+`make check` runs formatting, policy checks, tests, and a release build. See [Tests/Smoke/README.md](Tests/Smoke/README.md) for AX smoke checks and [docs/benchmarks.md](docs/benchmarks.md) for latency runs.
 
 ## Update
 

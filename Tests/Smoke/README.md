@@ -9,7 +9,7 @@ Requirements:
 - No other window manager is active.
 - Prefer a dedicated test user account.
 
-Expected checks:
+Expected Checks:
 
 - Fixture app launches.
 - parket launches.
@@ -20,7 +20,7 @@ Expected checks:
 - parket exits through signal handling.
 - Fixture windows remain onscreen after parket exits.
 
-Manual follow-up scenarios:
+Manual Follow-Up Scenarios:
 
 - Switch workspaces with Option+1 through Option+9.
 - Move focused fixture window with Option+Shift+1 through Option+Shift+9.
