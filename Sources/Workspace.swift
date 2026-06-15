@@ -498,6 +498,7 @@ package final class WorkspaceManager {
     }
 
     private func rebuildMonitors(screens: [NSScreen], snapshot: ScreenSnapshot) {
+        let visibleScreens = snapshot.screens.map(\.visibleFrame)
         monitors =
             screens
             .compactMap { screen -> Monitor? in
@@ -507,7 +508,10 @@ package final class WorkspaceManager {
                     displayID: displayID,
                     screen: screen,
                     tileFrame: geometry.visibleFrame,
-                    offscreenFrame: geometry.frame
+                    offscreenContext: OffscreenWindowPlacementContext(
+                        screen: geometry.visibleFrame,
+                        visibleScreens: visibleScreens
+                    )
                 )
             }
             .sorted { lhs, rhs in

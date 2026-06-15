@@ -88,4 +88,51 @@ struct ScreenGeometryTests {
 
         #expect(ScreenGeometry.topologySignature([left, right]) == ScreenGeometry.topologySignature([right, left]))
     }
+
+    @Test func offscreenPlacementLeavesOnlyCornerPixelOnSingleScreen() {
+        let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let context = OffscreenWindowPlacementContext(screen: screen, visibleScreens: [screen])
+        let size = CGSize(width: 300, height: 200)
+
+        let origin = OffscreenWindowPlacement.origin(windowSize: size, context: context)
+        let hidden = CGRect(origin: origin, size: size)
+
+        #expect(origin == CGPoint(x: 999, y: 799))
+        #expect(visibleArea(hidden, in: [screen]) == 1)
+    }
+
+    @Test func offscreenPlacementAvoidsNeighborBelowRightCorner() {
+        let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let rightLow = CGRect(x: 1000, y: 700, width: 1000, height: 500)
+        let context = OffscreenWindowPlacementContext(screen: screen, visibleScreens: [screen, rightLow])
+        let size = CGSize(width: 300, height: 200)
+
+        let origin = OffscreenWindowPlacement.origin(windowSize: size, context: context)
+        let hidden = CGRect(origin: origin, size: size)
+
+        #expect(origin == CGPoint(x: -299, y: 799))
+        #expect(visibleArea(hidden, in: [screen, rightLow]) == 1)
+    }
+
+    @Test func offscreenPlacementUsesTopCornerWhenBothBottomCornersLeak() {
+        let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let leftLow = CGRect(x: -1000, y: 700, width: 1000, height: 500)
+        let rightLow = CGRect(x: 1000, y: 700, width: 1000, height: 500)
+        let context = OffscreenWindowPlacementContext(screen: screen, visibleScreens: [screen, leftLow, rightLow])
+        let size = CGSize(width: 300, height: 200)
+
+        let origin = OffscreenWindowPlacement.origin(windowSize: size, context: context)
+        let hidden = CGRect(origin: origin, size: size)
+
+        #expect(origin == CGPoint(x: 999, y: -199))
+        #expect(visibleArea(hidden, in: [screen, leftLow, rightLow]) == 1)
+    }
+
+    private func visibleArea(_ rect: CGRect, in screens: [CGRect]) -> CGFloat {
+        screens.reduce(0) { result, screen in
+            let intersection = rect.intersection(screen)
+            guard !intersection.isNull, !intersection.isEmpty else { return result }
+            return result + intersection.width * intersection.height
+        }
+    }
 }

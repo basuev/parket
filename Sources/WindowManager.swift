@@ -98,10 +98,10 @@ struct TrackedWindow: Equatable {
     }
 
     @MainActor
-    func hideOffscreen(_ screen: CGRect) {
-        let currentY = getFrame()?.origin.y ?? WindowManager.appliedPosition(for: element)?.y
-        let y = currentY.map { $0 >= screen.minY && $0 <= screen.maxY ? $0 : screen.maxY - 1 } ?? screen.maxY - 1
-        setPosition(CGPoint(x: screen.origin.x + 1 - screen.width, y: y))
+    func hideOffscreen(_ context: OffscreenWindowPlacementContext) {
+        let size = getFrame()?.size ?? context.screen.size
+        let origin = OffscreenWindowPlacement.origin(windowSize: size, context: context)
+        setPosition(origin)
     }
 
     @MainActor

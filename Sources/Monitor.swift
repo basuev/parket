@@ -19,7 +19,7 @@ package final class Monitor {
     let displayID: CGDirectDisplayID
     var screen: NSScreen
     private let tileFrame: CGRect
-    private let offscreenFrame: CGRect
+    private let offscreenContext: OffscreenWindowPlacementContext
     var workspaces: [[TrackedWindow]] = Array(repeating: [], count: Config.shared.workspaceCount)
     var layouts: [Layout] = Array(repeating: .tile, count: Config.shared.workspaceCount)
     var focusedIndices: [Int] = Array(repeating: 0, count: Config.shared.workspaceCount)
@@ -32,11 +32,16 @@ package final class Monitor {
     private var focusRestoreGeneration: UInt64 = 0
     private var moveFocusGeneration: UInt64 = 0
 
-    init(displayID: CGDirectDisplayID, screen: NSScreen, tileFrame: CGRect, offscreenFrame: CGRect) {
+    init(
+        displayID: CGDirectDisplayID,
+        screen: NSScreen,
+        tileFrame: CGRect,
+        offscreenContext: OffscreenWindowPlacementContext
+    ) {
         self.displayID = displayID
         self.screen = screen
         self.tileFrame = tileFrame
-        self.offscreenFrame = offscreenFrame
+        self.offscreenContext = offscreenContext
     }
 
     func switchTo(_ index: Int) {
@@ -55,7 +60,7 @@ package final class Monitor {
             PerformanceTelemetry.traceSubspan("hide") {
                 PerformanceTelemetry.measure(.hideWorkspace) {
                     for win in workspaces[previous] {
-                        win.hideOffscreen(offscreenFrame)
+                        win.hideOffscreen(offscreenContext)
                     }
                 }
             }
@@ -83,7 +88,7 @@ package final class Monitor {
             suppressGeometryNotifications()
             PerformanceTelemetry.measure(.hideWorkspace) {
                 for win in workspaces[previous] {
-                    win.hideOffscreen(offscreenFrame)
+                    win.hideOffscreen(offscreenContext)
                 }
             }
         }
@@ -110,7 +115,7 @@ package final class Monitor {
         workspaces[index].insert(moved, at: 0)
 
         retile(validate: false)
-        moved.hideOffscreen(offscreenFrame)
+        moved.hideOffscreen(offscreenContext)
         WindowManager.invalidateAppliedGeometry(moved)
 
         let next = workspaces[active].first(where: { $0.pid == moved.pid }) ?? workspaces[active].first
@@ -141,7 +146,7 @@ package final class Monitor {
         if target == active {
             scheduleRetile()
         } else {
-            window.hideOffscreen(offscreenFrame)
+            window.hideOffscreen(offscreenContext)
             WindowManager.invalidateAppliedGeometry(window)
         }
         return .inserted
@@ -161,7 +166,7 @@ package final class Monitor {
         guard updateExistingWindow(window) == .missing else { return }
         workspaces[target].insert(window, at: 0)
         if target != active {
-            window.hideOffscreen(offscreenFrame)
+            window.hideOffscreen(offscreenContext)
             WindowManager.invalidateAppliedGeometry(window)
         }
     }
