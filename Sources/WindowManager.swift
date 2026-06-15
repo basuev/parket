@@ -38,7 +38,7 @@ struct TrackedWindow: Equatable {
         self.focusElement = element
         self.members = TrackedWindow.unique([window] + members)
         self.pid = pid
-        self.group = group ?? WindowGroupKey(pid: pid, frame: WindowManager.frame(of: window) ?? .null)
+        self.group = group ?? WindowManager.groupKey(pid: pid, window: window)
     }
 
     static func == (lhs: TrackedWindow, rhs: TrackedWindow) -> Bool {
@@ -389,6 +389,32 @@ enum WindowManager {
         return window
     }
 
+    static func groupKey(pid: pid_t, window: AXUIElement) -> WindowGroupKey {
+        let identity: WindowIdentityKey
+        if let tabGroup = nativeTabGroupElement(window) {
+            identity = .nativeTabGroup(elementKey(tabGroup))
+        } else {
+            identity = .element(elementKey(window))
+        }
+        return WindowGroupKey(pid: pid, identity: identity)
+    }
+
+    private static func nativeTabGroupElement(_ window: AXUIElement) -> AXUIElement? {
+        var childrenValue: AnyObject?
+        guard copyAttributeValue(window, kAXChildrenAttribute as CFString, &childrenValue) == .success,
+            let children = childrenValue as? [AXUIElement]
+        else { return nil }
+
+        for child in children {
+            var roleValue: AnyObject?
+            guard copyAttributeValue(child, kAXRoleAttribute as CFString, &roleValue) == .success else { continue }
+            if roleValue as? String == kAXTabGroupRole as String {
+                return child
+            }
+        }
+        return nil
+    }
+
     static func frame(of element: AXUIElement) -> CGRect? {
         var posValue: AnyObject?
         var sizeValue: AnyObject?
@@ -552,7 +578,7 @@ private struct WindowCandidate {
         self.element = element
         self.window = window
         self.frame = frame
-        self.group = WindowGroupKey(pid: pid, frame: frame)
+        self.group = WindowManager.groupKey(pid: pid, window: window)
     }
 
     func matches(_ other: WindowCandidate) -> Bool {

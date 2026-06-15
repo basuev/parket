@@ -2,12 +2,17 @@ import CoreGraphics
 
 package struct WindowGroupKey: Hashable, Sendable {
     let pid: pid_t
-    let frame: WindowFrameKey
+    let identity: WindowIdentityKey
 
-    package init(pid: pid_t, frame: CGRect) {
+    package init(pid: pid_t, identity: WindowIdentityKey) {
         self.pid = pid
-        self.frame = WindowFrameKey(frame)
+        self.identity = identity
     }
+}
+
+package enum WindowIdentityKey: Hashable, Sendable {
+    case element(UInt)
+    case nativeTabGroup(UInt)
 }
 
 package struct WindowFrameKey: Hashable, Sendable {
@@ -40,8 +45,7 @@ package enum WindowGrouping {
         rhsGroup: WindowGroupKey,
         rhsFrame: CGRect
     ) -> Bool {
-        lhsGroup == rhsGroup
-            || (lhsGroup.pid == rhsGroup.pid && overlapRatio(lhsFrame, rhsFrame) >= nativeTabOverlapThreshold)
+        lhsGroup == rhsGroup && overlapRatio(lhsFrame, rhsFrame) >= nativeTabOverlapThreshold
     }
 
     package static func overlapRatio(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {

@@ -20,6 +20,7 @@ package final class WorkspaceManager {
     private var focusFollowWork: DispatchWorkItem?
     private var registryRefreshWorks: [pid_t: DispatchWorkItem] = [:]
     private var pendingFocusRepairs: [pid_t: ClosedWindowFocusRepair] = [:]
+    private var pendingClosedWindowPIDs: Set<pid_t> = []
     private var ignoreExternalFocusUntil: TimeInterval = 0
     private var statusUpdateScheduled = false
     private let windowRegistry = ShadowWindowRegistry()
@@ -80,7 +81,9 @@ package final class WorkspaceManager {
                 return result
             }
         }
-        let result = focusedMonitor.addWindow(window)
+        let target = placementTarget(for: window.pid)
+        let monitor = monitors.indices.contains(target.monitorIndex) ? monitors[target.monitorIndex] : focusedMonitor
+        let result = monitor.addWindow(window, workspaceIndex: target.workspaceIndex)
         if result == .inserted {
             refreshWindowRegistry(pid: window.pid)
             StatusBar.shared.update()
@@ -107,9 +110,17 @@ package final class WorkspaceManager {
         if changed {
             refreshWindowRegistry(pid: pid)
         }
+        let closedWindow = pendingClosedWindowPIDs.remove(pid) != nil
         let repairedFocus = applyPendingFocusRepair(pid: pid)
         if changed || repairedFocus {
             StatusBar.shared.update()
+        }
+        if PostSyncExternalFocusPolicy.shouldFollow(
+            changed: changed,
+            closedWindow: closedWindow,
+            repairedFocus: repairedFocus
+        ) {
+            followExternalFocus(pid: pid)
         }
     }
 
@@ -122,6 +133,7 @@ package final class WorkspaceManager {
         }
         registryRefreshWorks.removeValue(forKey: pid)?.cancel()
         pendingFocusRepairs.removeValue(forKey: pid)
+        pendingClosedWindowPIDs.remove(pid)
         windowRegistry.remove(pid: pid)
         WindowManager.clearExpectedFocus(pid: pid)
         guard changed else { return }
@@ -233,6 +245,8 @@ package final class WorkspaceManager {
     func handleWindowDestroyed(pid: pid_t, element: AXUIElement) {
         if let removed = windowRegistry.remove(pid: pid, element: element) {
             WindowManager.clearExpectedFocus(removed.window)
+            pendingClosedWindowPIDs.insert(pid)
+            suppressExternalFocusFollow()
             recordPendingFocusRepair(removed)
         }
         scheduleRegistryRefresh(pid: pid)
@@ -499,6 +513,31 @@ package final class WorkspaceManager {
         }
         refreshWindowRegistry()
         return windowRegistry.singleTrackedWindow(pid: pid)
+    }
+
+    private func placementTarget(for pid: pid_t) -> WorkspacePlacementTarget {
+        let current = WorkspacePlacementTarget(
+            monitorIndex: focusedMonitorIndex,
+            workspaceIndex: focusedMonitor.active
+        )
+        return NewWindowPlacement.target(existingAppWindows: appWindowTargets(pid: pid), current: current)
+    }
+
+    private func appWindowTargets(pid: pid_t) -> [WorkspacePlacementTarget] {
+        var result: [WorkspacePlacementTarget] = []
+        for monitorIndex in monitors.indices {
+            let monitor = monitors[monitorIndex]
+            for workspaceIndex in monitor.workspaces.indices {
+                if monitor.workspaces[workspaceIndex].contains(where: { $0.pid == pid }) {
+                    result.append(
+                        WorkspacePlacementTarget(
+                            monitorIndex: monitorIndex,
+                            workspaceIndex: workspaceIndex
+                        ))
+                }
+            }
+        }
+        return result
     }
 
     private func recordPendingFocusRepair(_ removed: RemovedWindowRecord) {

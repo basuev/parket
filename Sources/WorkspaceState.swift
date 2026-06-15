@@ -70,6 +70,28 @@ struct ClosedWindowFocusRepair: Equatable, Sendable {
     }
 }
 
+struct WorkspacePlacementTarget: Equatable, Hashable, Sendable {
+    let monitorIndex: Int
+    let workspaceIndex: Int
+}
+
+enum NewWindowPlacement {
+    static func target(
+        existingAppWindows: [WorkspacePlacementTarget],
+        current: WorkspacePlacementTarget
+    ) -> WorkspacePlacementTarget {
+        guard let first = existingAppWindows.first else { return current }
+        guard existingAppWindows.allSatisfy({ $0 == first }) else { return current }
+        return first
+    }
+}
+
+enum PostSyncExternalFocusPolicy {
+    static func shouldFollow(changed: Bool, closedWindow: Bool, repairedFocus: Bool) -> Bool {
+        changed && !closedWindow && !repairedFocus
+    }
+}
+
 package struct MonitorWorkspaceState<Element: Equatable>: Equatable {
     package private(set) var workspaces: [[Element]]
     package private(set) var layouts: [Layout]

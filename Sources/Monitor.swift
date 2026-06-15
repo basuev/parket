@@ -127,10 +127,21 @@ package final class Monitor {
 
     @discardableResult
     func addWindow(_ window: TrackedWindow) -> WindowUpdate {
+        addWindow(window, workspaceIndex: active)
+    }
+
+    @discardableResult
+    func addWindow(_ window: TrackedWindow, workspaceIndex: Int) -> WindowUpdate {
         let existing = updateExistingWindow(window)
         guard existing == .missing else { return existing }
-        workspaces[active].insert(window, at: 0)
-        scheduleRetile()
+        let target = workspaces.indices.contains(workspaceIndex) ? workspaceIndex : active
+        workspaces[target].insert(window, at: 0)
+        if target == active {
+            scheduleRetile()
+        } else {
+            window.hideOffscreen(offscreenFrame)
+            WindowManager.invalidateAppliedGeometry(window)
+        }
         return .inserted
     }
 

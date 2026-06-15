@@ -30,4 +30,35 @@ struct WorkspaceStateTests {
         #expect(state.active == 3)
         #expect(state.previousActive == 3)
     }
+
+    @Test func newWindowUsesSingleExistingAppWorkspaceOwner() {
+        let owner = WorkspacePlacementTarget(monitorIndex: 1, workspaceIndex: 2)
+        let current = WorkspacePlacementTarget(monitorIndex: 0, workspaceIndex: 0)
+
+        let target = NewWindowPlacement.target(existingAppWindows: [owner, owner], current: current)
+
+        #expect(target == owner)
+    }
+
+    @Test func newWindowFallsBackToCurrentWorkspaceWhenAppSpansWorkspaces() {
+        let current = WorkspacePlacementTarget(monitorIndex: 0, workspaceIndex: 0)
+
+        let target = NewWindowPlacement.target(
+            existingAppWindows: [
+                WorkspacePlacementTarget(monitorIndex: 0, workspaceIndex: 1),
+                WorkspacePlacementTarget(monitorIndex: 0, workspaceIndex: 2),
+            ],
+            current: current
+        )
+
+        #expect(target == current)
+    }
+
+    @Test func newWindowFallsBackToCurrentWorkspaceWithoutExistingAppWindows() {
+        let current = WorkspacePlacementTarget(monitorIndex: 0, workspaceIndex: 3)
+
+        let target = NewWindowPlacement.target(existingAppWindows: [], current: current)
+
+        #expect(target == current)
+    }
 }

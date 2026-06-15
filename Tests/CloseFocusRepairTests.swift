@@ -62,4 +62,31 @@ struct CloseFocusRepairTests {
         #expect(ClosedWindowFocusRepair.targetIndex(removedWindowIndex: 2, remainingCount: 2) == 1)
         #expect(ClosedWindowFocusRepair.targetIndex(removedWindowIndex: 0, remainingCount: 0) == nil)
     }
+
+    @Test func closedWindowSyncDoesNotFollowExternalFocus() {
+        #expect(
+            !PostSyncExternalFocusPolicy.shouldFollow(
+                changed: true,
+                closedWindow: true,
+                repairedFocus: false
+            ))
+    }
+
+    @Test func repairedCloseFocusDoesNotFollowExternalFocus() {
+        #expect(
+            !PostSyncExternalFocusPolicy.shouldFollow(
+                changed: true,
+                closedWindow: true,
+                repairedFocus: true
+            ))
+    }
+
+    @Test func newWindowSyncCanFollowExternalFocus() {
+        #expect(
+            PostSyncExternalFocusPolicy.shouldFollow(
+                changed: true,
+                closedWindow: false,
+                repairedFocus: false
+            ))
+    }
 }
