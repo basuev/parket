@@ -348,6 +348,19 @@ package final class Monitor {
         geometryOperationGeneration &+= 1
     }
 
+    func applyScreenChangeGeometry() {
+        retile(validate: true)
+        for workspaceIndex in ScreenChangeVisibilityPlan.hiddenWorkspaceIndices(
+            workspaceCount: workspaces.count,
+            active: active
+        ) {
+            for window in workspaces[workspaceIndex] {
+                WindowManager.invalidateAppliedGeometry(window)
+                window.hideOffscreen(offscreenContext)
+            }
+        }
+    }
+
     private func cleanActiveWorkspace() {
         var windows: [TrackedWindow] = []
         for window in workspaces[active] {

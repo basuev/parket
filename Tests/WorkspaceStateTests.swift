@@ -131,4 +131,17 @@ struct WorkspaceStateTests {
             ))
     }
 
+    @Test func screenChangeVisibilityPlanRehidesInactiveWorkspaces() {
+        #expect(
+            ScreenChangeVisibilityPlan.hiddenWorkspaceIndices(
+                workspaceCount: 4,
+                active: 0
+            ) == [1, 2, 3])
+        #expect(
+            ScreenChangeVisibilityPlan.hiddenWorkspaceIndices(
+                workspaceCount: 4,
+                active: 2
+            ) == [0, 1, 3])
+    }
+
 }

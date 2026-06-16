@@ -435,7 +435,7 @@ package final class WorkspaceManager {
 
             if !isTilingPaused {
                 for monitor in monitors {
-                    monitor.retile(validate: true)
+                    monitor.applyScreenChangeGeometry()
                 }
             }
 

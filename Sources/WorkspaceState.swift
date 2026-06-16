@@ -113,6 +113,13 @@ enum ScreenChangeEmptySnapshotPolicy {
     }
 }
 
+enum ScreenChangeVisibilityPlan {
+    static func hiddenWorkspaceIndices(workspaceCount: Int, active: Int) -> [Int] {
+        guard workspaceCount > 0 else { return [] }
+        return (0..<workspaceCount).filter { $0 != active }
+    }
+}
+
 enum PostSyncExternalFocusPolicy {
     static func shouldFollow(changed: Bool, closedWindow: Bool, repairedFocus: Bool) -> Bool {
         changed && !closedWindow && !repairedFocus
