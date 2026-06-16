@@ -45,7 +45,7 @@ package enum WindowGrouping {
         rhsGroup: WindowGroupKey,
         rhsFrame: CGRect
     ) -> Bool {
-        lhsGroup.pid == rhsGroup.pid
+        lhsGroup == rhsGroup
             && overlapRatio(lhsFrame, rhsFrame) >= nativeTabOverlapThreshold
     }
 

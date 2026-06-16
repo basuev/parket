@@ -23,23 +23,23 @@ struct WindowGroupTests {
         #expect(left != right)
     }
 
-    @Test func equalFramesGroupNativeTabLikeElements() {
+    @Test func equalFramesDoNotGroupSeparateElements() {
         let left = WindowGroupKey(pid: 10, identity: .element(1))
         let right = WindowGroupKey(pid: 10, identity: .element(2))
-        #expect(WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: frame))
+        #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: frame))
     }
 
-    @Test func overlapGroupsNativeTabLikeElements() {
+    @Test func overlapDoesNotGroupSeparateElements() {
         let shifted = CGRect(x: 260, y: 132, width: 950, height: 632)
         let left = WindowGroupKey(pid: 10, identity: .element(1))
         let right = WindowGroupKey(pid: 10, identity: .element(2))
-        #expect(WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
+        #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
     }
 
-    @Test func overlapGroupsNativeTabGroupElements() {
+    @Test func overlapGroupsSharedNativeTabGroup() {
         let shifted = CGRect(x: 260, y: 132, width: 950, height: 632)
         let left = WindowGroupKey(pid: 10, identity: .nativeTabGroup(1))
-        let right = WindowGroupKey(pid: 10, identity: .nativeTabGroup(2))
+        let right = WindowGroupKey(pid: 10, identity: .nativeTabGroup(1))
         #expect(WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
     }
 
@@ -57,10 +57,9 @@ struct WindowGroupTests {
         #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
     }
 
-    @Test func separatedFramesDoNotGroupDifferentNativeTabGroups() {
-        let shifted = CGRect(x: 1400, y: 128, width: 960, height: 640)
+    @Test func equalFramesDoNotGroupDifferentNativeTabGroups() {
         let left = WindowGroupKey(pid: 10, identity: .nativeTabGroup(1))
         let right = WindowGroupKey(pid: 10, identity: .nativeTabGroup(2))
-        #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: shifted))
+        #expect(!WindowGrouping.matches(lhsGroup: left, lhsFrame: frame, rhsGroup: right, rhsFrame: frame))
     }
 }

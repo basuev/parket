@@ -70,6 +70,20 @@ struct ClosedWindowFocusRepair: Equatable, Sendable {
     }
 }
 
+enum WindowLocationBounds {
+    static func containsMonitor(_ location: WindowLocation, monitorCount: Int) -> Bool {
+        WorkspaceBounds.isValidIndex(location.monitorIndex, count: monitorCount)
+    }
+
+    static func containsWorkspace(_ location: WindowLocation, workspaceCount: Int) -> Bool {
+        WorkspaceBounds.isValidIndex(location.workspaceIndex, count: workspaceCount)
+    }
+
+    static func containsWindow(_ location: WindowLocation, windowCount: Int) -> Bool {
+        WorkspaceBounds.isValidIndex(location.windowIndex, count: windowCount)
+    }
+}
+
 struct WorkspacePlacementTarget: Equatable, Hashable, Sendable {
     let monitorIndex: Int
     let workspaceIndex: Int

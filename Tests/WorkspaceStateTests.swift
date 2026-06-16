@@ -144,4 +144,15 @@ struct WorkspaceStateTests {
             ) == [0, 1, 3])
     }
 
+    @Test func windowLocationBoundsRejectStaleIndices() {
+        let current = WindowLocation(monitorIndex: 1, workspaceIndex: 2, windowIndex: 3)
+        #expect(WindowLocationBounds.containsMonitor(current, monitorCount: 2))
+        #expect(WindowLocationBounds.containsWorkspace(current, workspaceCount: 4))
+        #expect(WindowLocationBounds.containsWindow(current, windowCount: 4))
+
+        #expect(!WindowLocationBounds.containsMonitor(current, monitorCount: 1))
+        #expect(!WindowLocationBounds.containsWorkspace(current, workspaceCount: 2))
+        #expect(!WindowLocationBounds.containsWindow(current, windowCount: 3))
+    }
+
 }

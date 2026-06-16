@@ -284,9 +284,13 @@ package final class WorkspaceManager {
     private func performWindowGeometryChange(pid: pid_t, element: AXUIElement) {
         guard !isTilingPaused else { return }
         guard let location = locateWindow(pid: pid, element: element) else { return }
-        let monitor = monitors[location.monitorIndex]
+        guard let current = trackedWindow(at: location) else {
+            refreshWindowRegistry(pid: pid)
+            return
+        }
+        let monitor = current.monitor
         guard !monitor.shouldSuppressGeometryNotification() else { return }
-        let window = monitor.workspaces[location.workspaceIndex][location.windowIndex]
+        let window = current.window
         windowRegistry.upsert(window, at: location)
         WindowManager.invalidateAppliedGeometry(window)
         guard monitor.active == location.workspaceIndex else { return }
@@ -546,6 +550,17 @@ package final class WorkspaceManager {
         }
         refreshWindowRegistry()
         return windowRegistry.locate(pid: pid, element: element)
+    }
+
+    private func trackedWindow(at location: WindowLocation) -> (monitor: Monitor, window: TrackedWindow)? {
+        guard WindowLocationBounds.containsMonitor(location, monitorCount: monitors.count) else { return nil }
+        let monitor = monitors[location.monitorIndex]
+        guard WindowLocationBounds.containsWorkspace(location, workspaceCount: monitor.workspaces.count) else {
+            return nil
+        }
+        let workspace = monitor.workspaces[location.workspaceIndex]
+        guard WindowLocationBounds.containsWindow(location, windowCount: workspace.count) else { return nil }
+        return (monitor, workspace[location.windowIndex])
     }
 
     private func singleTrackedWindow(pid: pid_t) -> (window: TrackedWindow, location: WindowLocation)? {
