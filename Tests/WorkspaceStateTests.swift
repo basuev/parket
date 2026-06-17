@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 
 @testable import ParketCore
@@ -93,6 +94,72 @@ struct WorkspaceStateTests {
         )
 
         #expect(target == 1)
+    }
+
+    @Test func unchangedPrimaryDisplayDoesNotMigrate() {
+        let action = PrimaryDisplayMigrationPlan.action(
+            previousPrimaryDisplayID: 1,
+            currentPrimaryDisplayID: 1,
+            oldDisplayIDs: [1, 2],
+            currentDisplayIDs: [1, 2]
+        )
+
+        #expect(action == .none)
+    }
+
+    @Test func primaryDisplayChangeSwapsWhenOldPrimaryRemainsConnected() {
+        let action = PrimaryDisplayMigrationPlan.action(
+            previousPrimaryDisplayID: 1,
+            currentPrimaryDisplayID: 2,
+            oldDisplayIDs: [1, 2, 3],
+            currentDisplayIDs: [1, 2, 3]
+        )
+
+        #expect(action == .swap(oldPrimaryDisplayID: 1, newPrimaryDisplayID: 2))
+    }
+
+    @Test func newlyAttachedPrimarySwapsWithEmptyTargetWhenOldPrimaryRemainsConnected() {
+        let action = PrimaryDisplayMigrationPlan.action(
+            previousPrimaryDisplayID: 1,
+            currentPrimaryDisplayID: 2,
+            oldDisplayIDs: [1],
+            currentDisplayIDs: [1, 2]
+        )
+
+        #expect(action == .swap(oldPrimaryDisplayID: 1, newPrimaryDisplayID: 2))
+    }
+
+    @Test func primaryDisplayChangeMovesWhenOldPrimaryDisappears() {
+        let action = PrimaryDisplayMigrationPlan.action(
+            previousPrimaryDisplayID: 1,
+            currentPrimaryDisplayID: 2,
+            oldDisplayIDs: [1, 2],
+            currentDisplayIDs: [2]
+        )
+
+        #expect(action == .move(oldPrimaryDisplayID: 1, newPrimaryDisplayID: 2))
+    }
+
+    @Test func primaryDisplayChangeDoesNotMigrateWithoutSourceState() {
+        let action = PrimaryDisplayMigrationPlan.action(
+            previousPrimaryDisplayID: 1,
+            currentPrimaryDisplayID: 2,
+            oldDisplayIDs: [2],
+            currentDisplayIDs: [2]
+        )
+
+        #expect(action == .none)
+    }
+
+    @Test func primaryDisplayChangeDoesNotMigrateWithoutCurrentPrimaryMonitor() {
+        let action = PrimaryDisplayMigrationPlan.action(
+            previousPrimaryDisplayID: 1,
+            currentPrimaryDisplayID: 2,
+            oldDisplayIDs: [1, 2],
+            currentDisplayIDs: [1, 3]
+        )
+
+        #expect(action == .none)
     }
 
     @Test func screenChangeEmptySnapshotWithTrackedWindowsDefers() {

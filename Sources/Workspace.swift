@@ -28,6 +28,7 @@ package final class WorkspaceManager {
     private var ignoreExternalFocusUntil: TimeInterval = 0
     private var screenChangeSettleUntil: TimeInterval = 0
     private var statusUpdateScheduled = false
+    private var lastPrimaryDisplayID: CGDirectDisplayID?
     private let windowRegistry = ShadowWindowRegistry()
 
     var focusedMonitor: Monitor { monitors[focusedMonitorIndex] }
@@ -39,10 +40,11 @@ package final class WorkspaceManager {
         let snapshot = WindowManager.screenSnapshot(for: screens)
         rebuildMonitors(screens: screens, snapshot: snapshot)
         focusedMonitorIndex = 0
+        lastPrimaryDisplayID = primaryDisplayID()
         let windows = PerformanceTelemetry.measure(.axSnapshot) {
             WindowManager.allWindows()
         }
-        let fallbackDisplayID = primaryDisplayID()
+        let fallbackDisplayID = lastPrimaryDisplayID
         for window in windows {
             monitorForWindow(window, snapshot: snapshot, fallbackDisplayID: fallbackDisplayID).insertWindow(window)
         }
@@ -406,9 +408,19 @@ package final class WorkspaceManager {
 
             guard !monitors.isEmpty else {
                 focusedMonitorIndex = 0
+                lastPrimaryDisplayID = nil
                 StatusBar.shared.update()
                 return
             }
+
+            let currentPrimaryDisplayID = primaryDisplayID()
+            let currentIDs = Set(monitors.map { $0.displayID })
+            let migration = PrimaryDisplayMigrationPlan.action(
+                previousPrimaryDisplayID: lastPrimaryDisplayID,
+                currentPrimaryDisplayID: currentPrimaryDisplayID,
+                oldDisplayIDs: Set(old.keys),
+                currentDisplayIDs: currentIDs
+            )
 
             for monitor in monitors {
                 if let existing = old[monitor.displayID] {
@@ -416,9 +428,10 @@ package final class WorkspaceManager {
                 }
             }
 
-            let currentIDs = Set(monitors.map { $0.displayID })
-            let fallbackDisplayID = primaryDisplayID()
+            let didMigratePrimaryDisplay = applyPrimaryDisplayMigration(migration, old: old)
+            let fallbackDisplayID = currentPrimaryDisplayID
             for (id, oldMonitor) in old where !currentIDs.contains(id) {
+                guard !shouldSkipRemovedMonitorMigration(displayID: id, primaryMigration: migration) else { continue }
                 for workspaceIndex in oldMonitor.workspaces.indices {
                     for window in oldMonitor.workspaces[workspaceIndex].reversed() {
                         let target = monitorForWindow(window, snapshot: snapshot, fallbackDisplayID: fallbackDisplayID)
@@ -431,18 +444,26 @@ package final class WorkspaceManager {
                 }
             }
 
-            if let index = monitors.firstIndex(where: { $0.displayID == focusedDisplayID }) {
+            if didMigratePrimaryDisplay,
+                let index = monitors.firstIndex(where: { $0.displayID == currentPrimaryDisplayID })
+            {
+                focusedMonitorIndex = index
+            } else if let index = monitors.firstIndex(where: { $0.displayID == focusedDisplayID }) {
                 focusedMonitorIndex = index
             } else {
-                focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == primaryDisplayID() }) ?? 0
+                focusedMonitorIndex = monitors.firstIndex(where: { $0.displayID == currentPrimaryDisplayID }) ?? 0
             }
 
             if !isTilingPaused {
                 for monitor in monitors {
                     monitor.applyScreenChangeGeometry()
                 }
+                if didMigratePrimaryDisplay {
+                    focusedMonitor.restoreFocusedWindow()
+                }
             }
 
+            lastPrimaryDisplayID = currentPrimaryDisplayID
             refreshWindowRegistry()
             scheduleAllWindowSnapshotSync(delay: Self.screenChangeEmptySnapshotRetryDelay)
             StatusBar.shared.update()
@@ -532,8 +553,51 @@ package final class WorkspaceManager {
     }
 
     private func primaryDisplayID() -> CGDirectDisplayID {
-        guard !monitors.isEmpty else { return 0 }
-        return monitors.first(where: { $0.screen == NSScreen.main })?.displayID ?? monitors[0].displayID
+        let main = CGMainDisplayID()
+        if monitors.contains(where: { $0.displayID == main }) {
+            return main
+        }
+        if let screen = NSScreen.screens.first {
+            let displayID = WindowManager.displayID(for: screen)
+            if monitors.contains(where: { $0.displayID == displayID }) {
+                return displayID
+            }
+        }
+        return monitors.first?.displayID ?? main
+    }
+
+    private func applyPrimaryDisplayMigration(
+        _ action: PrimaryDisplayMigrationAction,
+        old: [CGDirectDisplayID: Monitor]
+    ) -> Bool {
+        switch action {
+        case .none:
+            return false
+        case .move(let oldPrimaryDisplayID, let newPrimaryDisplayID):
+            guard let source = old[oldPrimaryDisplayID],
+                let target = monitors.first(where: { $0.displayID == newPrimaryDisplayID })
+            else { return false }
+            target.copyState(from: source)
+            return true
+        case .swap(let oldPrimaryDisplayID, let newPrimaryDisplayID):
+            guard let oldPrimary = monitors.first(where: { $0.displayID == oldPrimaryDisplayID }),
+                let newPrimary = monitors.first(where: { $0.displayID == newPrimaryDisplayID })
+            else { return false }
+            oldPrimary.swapState(with: newPrimary)
+            return true
+        }
+    }
+
+    private func shouldSkipRemovedMonitorMigration(
+        displayID: CGDirectDisplayID,
+        primaryMigration: PrimaryDisplayMigrationAction
+    ) -> Bool {
+        switch primaryMigration {
+        case .none, .swap:
+            return false
+        case .move(let oldPrimaryDisplayID, _):
+            return displayID == oldPrimaryDisplayID
+        }
     }
 
     private func locateWindow(_ window: TrackedWindow) -> WindowLocation? {

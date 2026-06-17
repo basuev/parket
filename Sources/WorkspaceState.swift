@@ -1,3 +1,5 @@
+import CoreGraphics
+
 package enum WorkspaceBounds {
     package static let minimumCount = 1
     package static let maximumCount = 9
@@ -137,6 +139,36 @@ enum ScreenChangeVisibilityPlan {
 enum PostSyncExternalFocusPolicy {
     static func shouldFollow(changed: Bool, closedWindow: Bool, repairedFocus: Bool) -> Bool {
         changed && !closedWindow && !repairedFocus
+    }
+}
+
+enum PrimaryDisplayMigrationAction: Equatable, Sendable {
+    case none
+    case move(oldPrimaryDisplayID: CGDirectDisplayID, newPrimaryDisplayID: CGDirectDisplayID)
+    case swap(oldPrimaryDisplayID: CGDirectDisplayID, newPrimaryDisplayID: CGDirectDisplayID)
+}
+
+enum PrimaryDisplayMigrationPlan {
+    static func action(
+        previousPrimaryDisplayID: CGDirectDisplayID?,
+        currentPrimaryDisplayID: CGDirectDisplayID,
+        oldDisplayIDs: Set<CGDirectDisplayID>,
+        currentDisplayIDs: Set<CGDirectDisplayID>
+    ) -> PrimaryDisplayMigrationAction {
+        guard let previousPrimaryDisplayID else { return .none }
+        guard previousPrimaryDisplayID != currentPrimaryDisplayID else { return .none }
+        guard oldDisplayIDs.contains(previousPrimaryDisplayID) else { return .none }
+        guard currentDisplayIDs.contains(currentPrimaryDisplayID) else { return .none }
+        if currentDisplayIDs.contains(previousPrimaryDisplayID) {
+            return .swap(
+                oldPrimaryDisplayID: previousPrimaryDisplayID,
+                newPrimaryDisplayID: currentPrimaryDisplayID
+            )
+        }
+        return .move(
+            oldPrimaryDisplayID: previousPrimaryDisplayID,
+            newPrimaryDisplayID: currentPrimaryDisplayID
+        )
     }
 }
 

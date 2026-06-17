@@ -511,6 +511,22 @@ package final class Monitor {
         previousActive = source.previousActive
     }
 
+    func swapState(with other: Monitor) {
+        let workspaces = workspaces
+        let layouts = layouts
+        let focusedIndices = focusedIndices
+        let active = active
+        let previousActive = previousActive
+
+        copyState(from: other)
+
+        other.workspaces = workspaces
+        other.layouts = layouts
+        other.focusedIndices = focusedIndices
+        other.active = active
+        other.previousActive = previousActive
+    }
+
     func resetState() {
         geometryRetileWork?.cancel()
         geometryRetileWork = nil
