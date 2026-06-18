@@ -359,10 +359,25 @@ enum WindowManager {
         let minimized = results[2] as? Bool ?? false
         let fullscreen = results[3] as? Bool ?? false
 
-        return role == kAXWindowRole
-            && subrole == kAXStandardWindowSubrole
-            && !minimized
-            && !fullscreen
+        guard role == kAXWindowRole as String,
+            subrole == kAXStandardWindowSubrole as String,
+            !minimized,
+            !fullscreen
+        else { return false }
+
+        return TileableWindowPolicy.accepts(
+            TileableWindowAttributes(
+                role: role,
+                subrole: subrole,
+                minimized: minimized,
+                fullscreen: fullscreen,
+                modal: boolAttribute(element, "AXModal" as CFString),
+                hasCloseButton: hasElementAttribute(element, kAXCloseButtonAttribute as CFString),
+                hasMinimizeButton: hasElementAttribute(element, kAXMinimizeButtonAttribute as CFString),
+                hasZoomButton: hasElementAttribute(element, kAXZoomButtonAttribute as CFString),
+                canSetPosition: isAttributeSettable(element, kAXPositionAttribute as CFString),
+                canSetSize: isAttributeSettable(element, kAXSizeAttribute as CFString)
+            ))
     }
 
     static func isStandardWindow(_ element: AXUIElement) -> Bool {
@@ -510,6 +525,13 @@ enum WindowManager {
         return AXUIElementCopyMultipleAttributeValues(element, attributes, options, values)
     }
 
+    static func isAttributeSettable(_ element: AXUIElement, _ attribute: CFString) -> Bool {
+        PerformanceTelemetry.recordAXRead()
+        var settable = DarwinBoolean(false)
+        guard AXUIElementIsAttributeSettable(element, attribute, &settable) == .success else { return false }
+        return settable.boolValue
+    }
+
     @discardableResult
     static func setAttributeValue(_ element: AXUIElement, _ attribute: CFString, _ value: CFTypeRef) -> AXError {
         PerformanceTelemetry.recordAXWrite()
@@ -552,6 +574,21 @@ enum WindowManager {
 
     private static func elementKey(_ element: AXUIElement) -> CFHashCode {
         CFHash(element)
+    }
+
+    private static func boolAttribute(_ element: AXUIElement, _ attribute: CFString) -> Bool {
+        var value: AnyObject?
+        guard copyAttributeValue(element, attribute, &value) == .success else { return false }
+        return value as? Bool ?? false
+    }
+
+    private static func hasElementAttribute(_ element: AXUIElement, _ attribute: CFString) -> Bool {
+        var value: AnyObject?
+        guard copyAttributeValue(element, attribute, &value) == .success,
+            let value,
+            CFGetTypeID(value) == AXUIElementGetTypeID()
+        else { return false }
+        return true
     }
 
     private static func pointsMatch(_ lhs: CGPoint, _ rhs: CGPoint) -> Bool {
