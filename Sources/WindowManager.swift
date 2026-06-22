@@ -238,10 +238,18 @@ enum WindowManager {
         return app.bundleIdentifier == bundleID
     }
 
+    static func managedApplications() -> [NSRunningApplication] {
+        var result: [NSRunningApplication] = []
+        for app in NSWorkspace.shared.runningApplications {
+            appendManagedApplication(app, to: &result)
+        }
+        appendManagedApplication(NSWorkspace.shared.frontmostApplication, to: &result)
+        return result
+    }
+
     static func allWindows() -> [TrackedWindow] {
         var result: [TrackedWindow] = []
-        for app in NSWorkspace.shared.runningApplications {
-            guard isManagedApplication(app) else { continue }
+        for app in managedApplications() {
             let pid = app.processIdentifier
             let appRef = AXUIElementCreateApplication(pid)
 
@@ -253,6 +261,15 @@ enum WindowManager {
             result.append(contentsOf: trackedWindows(pid: pid, windows: windows))
         }
         return result
+    }
+
+    private static func appendManagedApplication(
+        _ app: NSRunningApplication?,
+        to result: inout [NSRunningApplication]
+    ) {
+        guard let app, isManagedApplication(app) else { return }
+        guard !result.contains(where: { $0.processIdentifier == app.processIdentifier }) else { return }
+        result.append(app)
     }
 
     static func windows(pid: pid_t) -> [TrackedWindow]? {

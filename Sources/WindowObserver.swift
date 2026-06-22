@@ -21,6 +21,7 @@ package final class WindowObserver {
     private static let retryInterval: TimeInterval = 0.05
     private static let syncCoalesceDelay: TimeInterval = 0.06
     private static let focusCoalesceDelay: TimeInterval = 0.015
+    private static let startupReconcileDelays: [TimeInterval] = [0.25, 1.0]
 
     private var observers: [pid_t: AXObserver] = [:]
     private var observedWindowElements: [pid_t: [AXUIElement]] = [:]
@@ -65,19 +66,42 @@ package final class WindowObserver {
                     WindowObserver.shared.handleActivateNotification(notification.value)
                 }
             }
+
+            scheduleStartupReconciles()
         }
 
         observeRunningApplications()
     }
 
     private func observeRunningApplications() {
-        for app in NSWorkspace.shared.runningApplications {
-            guard WindowManager.isManagedApplication(app) else { continue }
+        for app in WindowManager.managedApplications() {
             let pid = app.processIdentifier
             observeApp(pid: pid)
             if let windows = PerformanceTelemetry.measure(.axSnapshot, { WindowManager.windows(pid: pid) }) {
                 observeWindows(windows, pid: pid)
             }
+        }
+    }
+
+    private func scheduleStartupReconciles() {
+        for delay in Self.startupReconcileDelays {
+            let work = DispatchWorkItem { [self] in
+                reconcileRunningApplications()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        }
+    }
+
+    private func reconcileRunningApplications() {
+        guard ParketRuntime.shared.isRunning else { return }
+        for app in WindowManager.managedApplications() {
+            let pid = app.processIdentifier
+            observeApp(pid: pid)
+            guard let windows = PerformanceTelemetry.measure(.axSnapshot, { WindowManager.windows(pid: pid) }) else {
+                continue
+            }
+            WorkspaceManager.shared.syncWindows(pid: pid, windows: windows)
+            observeWindows(windows, pid: pid)
         }
     }
 

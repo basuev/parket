@@ -676,8 +676,7 @@ package final class WorkspaceManager {
     }
 
     private func scheduleAllWindowSnapshotSync(delay: TimeInterval) {
-        for app in NSWorkspace.shared.runningApplications {
-            guard WindowManager.isManagedApplication(app) else { continue }
+        for app in WindowManager.managedApplications() {
             scheduleWindowSnapshotSync(pid: app.processIdentifier, attempt: 0, delay: delay)
         }
     }
