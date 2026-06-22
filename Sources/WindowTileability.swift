@@ -37,17 +37,36 @@ package struct TileableWindowAttributes: Equatable {
     }
 }
 
+package enum TileableWindowRejectionReason: String, Equatable {
+    case role
+    case subrole
+    case minimized
+    case fullscreen
+    case modal
+    case missingCloseButton = "missing_close_button"
+    case missingMinimizeButton = "missing_minimize_button"
+    case missingZoomButton = "missing_zoom_button"
+    case positionNotSettable = "position_not_settable"
+    case sizeNotSettable = "size_not_settable"
+}
+
 package enum TileableWindowPolicy {
     package static func accepts(_ attributes: TileableWindowAttributes) -> Bool {
-        attributes.role == kAXWindowRole as String
-            && attributes.subrole == kAXStandardWindowSubrole as String
-            && !attributes.minimized
-            && !attributes.fullscreen
-            && !attributes.modal
-            && attributes.hasCloseButton
-            && attributes.hasMinimizeButton
-            && attributes.hasZoomButton
-            && attributes.canSetPosition
-            && attributes.canSetSize
+        rejectionReasons(attributes).isEmpty
+    }
+
+    package static func rejectionReasons(_ attributes: TileableWindowAttributes) -> [TileableWindowRejectionReason] {
+        var reasons: [TileableWindowRejectionReason] = []
+        if attributes.role != kAXWindowRole as String { reasons.append(.role) }
+        if attributes.subrole != kAXStandardWindowSubrole as String { reasons.append(.subrole) }
+        if attributes.minimized { reasons.append(.minimized) }
+        if attributes.fullscreen { reasons.append(.fullscreen) }
+        if attributes.modal { reasons.append(.modal) }
+        if !attributes.hasCloseButton { reasons.append(.missingCloseButton) }
+        if !attributes.hasMinimizeButton { reasons.append(.missingMinimizeButton) }
+        if !attributes.hasZoomButton { reasons.append(.missingZoomButton) }
+        if !attributes.canSetPosition { reasons.append(.positionNotSettable) }
+        if !attributes.canSetSize { reasons.append(.sizeNotSettable) }
+        return reasons
     }
 }

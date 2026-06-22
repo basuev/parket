@@ -47,6 +47,9 @@ package final class ParketRuntime {
         var lines: [String] = [
             "parket diagnostic report",
             "bundle_id: \(bundleID)",
+        ]
+        lines.append(contentsOf: RuntimeVersion.current().diagnosticLines)
+        lines.append(contentsOf: [
             "macos: \(version)",
             "accessibility: \(permissions.accessibility ? "granted" : "missing")",
             "runtime: \(isRunning ? "running" : "waiting")",
@@ -54,7 +57,7 @@ package final class ParketRuntime {
             "config_path: \(Config.path)",
             "workspace_count: \(Config.shared.workspaceCount)",
             "monitor_count: \(ws.monitors.count)",
-        ]
+        ])
         lines.append(contentsOf: Hotkeys.shared.diagnosticLines())
         lines.append("screen_topology: \(WindowManager.screenTopologySignature())")
         for (index, screen) in WindowManager.screenDescriptors().enumerated() {
@@ -85,6 +88,7 @@ package final class ParketRuntime {
                 }
             }
         }
+        lines.append(contentsOf: WindowManager.appDiscoveryDiagnosticLines())
 
         return lines.joined(separator: "\n")
     }

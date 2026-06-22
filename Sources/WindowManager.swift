@@ -226,7 +226,13 @@ enum WindowManager {
         var size: CGSize?
     }
 
+    private struct TileableAttributeSnapshot {
+        let attributes: TileableWindowAttributes?
+        let error: AXError?
+    }
+
     private static let appliedGeometryTolerance: CGFloat = 0.5
+    private static let rejectedWindowDiagnosticLimit = 50
     private static var appliedGeometry: [CFHashCode: AppliedGeometry] = [:]
     private static var expectedFocusedWindow: TrackedWindow?
 
@@ -358,6 +364,84 @@ enum WindowManager {
     }
 
     static func isTileable(_ element: AXUIElement) -> Bool {
+        guard let attributes = tileableAttributes(element).attributes else { return false }
+        return TileableWindowPolicy.accepts(attributes)
+    }
+
+    static func appDiscoveryDiagnosticLines() -> [String] {
+        let runningApps = NSWorkspace.shared.runningApplications
+        let regularCount = runningApps.filter { $0.activationPolicy == .regular }.count
+        let apps = managedApplications().sorted {
+            let left = $0.localizedName ?? $0.bundleIdentifier ?? $0.executableURL?.lastPathComponent ?? ""
+            let right = $1.localizedName ?? $1.bundleIdentifier ?? $1.executableURL?.lastPathComponent ?? ""
+            if left == right {
+                return $0.processIdentifier < $1.processIdentifier
+            }
+            return left < right
+        }
+        var rawWindowTotal = 0
+        var tileableTotal = 0
+        var rejectedTotal = 0
+        var unreadableTotal = 0
+        var lines: [String] = []
+        var rejectedLines: [String] = []
+
+        for app in apps {
+            let pid = app.processIdentifier
+            let appRef = AXUIElementCreateApplication(pid)
+            var windowsValue: AnyObject?
+            let readError = copyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue)
+
+            guard readError == .success, let windows = windowsValue as? [AXUIElement] else {
+                unreadableTotal += 1
+                lines.append(
+                    "app: \(appIdentity(app)) ax_windows=error:\(readError.rawValue) tileable=0 rejected=0"
+                )
+                continue
+            }
+
+            var tileableCount = 0
+            var rejectedCount = 0
+            rawWindowTotal += windows.count
+
+            for (index, element) in windows.enumerated() {
+                if let rejectedLine = rejectedWindowDiagnosticLine(
+                    app: app,
+                    pid: pid,
+                    index: index,
+                    element: element
+                ) {
+                    rejectedCount += 1
+                    if rejectedLines.count < rejectedWindowDiagnosticLimit {
+                        rejectedLines.append(rejectedLine)
+                    }
+                } else {
+                    tileableCount += 1
+                }
+            }
+
+            tileableTotal += tileableCount
+            rejectedTotal += rejectedCount
+            lines.append(
+                "app: \(appIdentity(app)) ax_windows=\(windows.count) tileable=\(tileableCount) rejected=\(rejectedCount)"
+            )
+        }
+
+        var result = [
+            "app_discovery: running=\(runningApps.count) regular=\(regularCount) managed=\(apps.count) bundle_filter=\(diagnosticValue(ProcessInfo.processInfo.environment["PARKET_MANAGED_BUNDLE_ID"])) ax_windows=\(rawWindowTotal) tileable=\(tileableTotal) rejected=\(rejectedTotal) unreadable=\(unreadableTotal)"
+        ]
+        if let frontmost = NSWorkspace.shared.frontmostApplication {
+            result.append("frontmost_app: \(appIdentity(frontmost))")
+        }
+        result.append(contentsOf: lines)
+        result.append(contentsOf: rejectedLines)
+        if rejectedTotal > rejectedLines.count {
+            result.append("rejected_window: omitted=\(rejectedTotal - rejectedLines.count)")
+        }
+        return result
+    }
+
+    private static func tileableAttributes(_ element: AXUIElement) -> TileableAttributeSnapshot {
         let attrs =
             [
                 kAXRoleAttribute,
@@ -367,23 +451,18 @@ enum WindowManager {
             ] as CFArray
 
         var values: CFArray?
-        guard copyMultipleAttributeValues(element, attrs, .stopOnError, &values) == .success,
+        let error = copyMultipleAttributeValues(element, attrs, .stopOnError, &values)
+        guard error == .success,
             let results = values as? [AnyObject], results.count == 4
-        else { return false }
+        else { return TileableAttributeSnapshot(attributes: nil, error: error) }
 
         let role = results[0] as? String
         let subrole = results[1] as? String
         let minimized = results[2] as? Bool ?? false
         let fullscreen = results[3] as? Bool ?? false
 
-        guard role == kAXWindowRole as String,
-            subrole == kAXStandardWindowSubrole as String,
-            !minimized,
-            !fullscreen
-        else { return false }
-
-        return TileableWindowPolicy.accepts(
-            TileableWindowAttributes(
+        return TileableAttributeSnapshot(
+            attributes: TileableWindowAttributes(
                 role: role,
                 subrole: subrole,
                 minimized: minimized,
@@ -394,7 +473,9 @@ enum WindowManager {
                 hasZoomButton: hasElementAttribute(element, kAXZoomButtonAttribute as CFString),
                 canSetPosition: isAttributeSettable(element, kAXPositionAttribute as CFString),
                 canSetSize: isAttributeSettable(element, kAXSizeAttribute as CFString)
-            ))
+            ),
+            error: nil
+        )
     }
 
     static func isStandardWindow(_ element: AXUIElement) -> Bool {
@@ -606,6 +687,80 @@ enum WindowManager {
             CFGetTypeID(value) == AXUIElementGetTypeID()
         else { return false }
         return true
+    }
+
+    private static func rejectedWindowDiagnosticLine(
+        app: NSRunningApplication,
+        pid: pid_t,
+        index: Int,
+        element: AXUIElement
+    ) -> String? {
+        let window = canonicalWindowElement(element) ?? element
+        let snapshot = tileableAttributes(window)
+        let frameText = frame(of: window).map(diagnosticRect) ?? "unknown"
+        let title = diagnosticValue(stringAttribute(window, kAXTitleAttribute as CFString))
+
+        guard let attributes = snapshot.attributes else {
+            let reason = snapshot.error.map { "attribute_read_error:\($0.rawValue)" } ?? "attribute_read_error:unknown"
+            return
+                "rejected_window: pid=\(pid) app=\(diagnosticValue(app.localizedName)) index=\(index) reason=\(reason) frame=\(frameText) title=\(title)"
+        }
+
+        let reasons = TileableWindowPolicy.rejectionReasons(attributes)
+        guard !reasons.isEmpty else { return nil }
+
+        let reasonText = reasons.map(\.rawValue).joined(separator: "+")
+        let controls = [
+            attributes.hasCloseButton ? "close" : nil,
+            attributes.hasMinimizeButton ? "minimize" : nil,
+            attributes.hasZoomButton ? "zoom" : nil,
+        ].compactMap { $0 }.joined(separator: ",")
+        let settable = [
+            attributes.canSetPosition ? "position" : nil,
+            attributes.canSetSize ? "size" : nil,
+        ].compactMap { $0 }.joined(separator: ",")
+
+        return
+            "rejected_window: pid=\(pid) app=\(diagnosticValue(app.localizedName)) index=\(index) reason=\(reasonText) role=\(diagnosticValue(attributes.role)) subrole=\(diagnosticValue(attributes.subrole)) minimized=\(attributes.minimized) fullscreen=\(attributes.fullscreen) modal=\(attributes.modal) controls=\(controls.isEmpty ? "none" : controls) settable=\(settable.isEmpty ? "none" : settable) frame=\(frameText) title=\(title)"
+    }
+
+    private static func stringAttribute(_ element: AXUIElement, _ attribute: CFString) -> String? {
+        var value: AnyObject?
+        guard copyAttributeValue(element, attribute, &value) == .success else { return nil }
+        return value as? String
+    }
+
+    private static func diagnosticActivationPolicy(_ policy: NSApplication.ActivationPolicy) -> String {
+        switch policy {
+        case .regular:
+            return "regular"
+        case .accessory:
+            return "accessory"
+        case .prohibited:
+            return "prohibited"
+        @unknown default:
+            return "unknown:\(policy.rawValue)"
+        }
+    }
+
+    private static func appIdentity(_ app: NSRunningApplication) -> String {
+        "pid=\(app.processIdentifier) name=\(diagnosticValue(app.localizedName)) bundle=\(diagnosticValue(app.bundleIdentifier)) activation=\(diagnosticActivationPolicy(app.activationPolicy)) executable=\(diagnosticValue(app.executableURL?.path))"
+    }
+
+    private static func diagnosticValue(_ value: String?) -> String {
+        guard let value, !value.isEmpty else { return "nil" }
+        return
+            value
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\t", with: "\\t")
+    }
+
+    private static func diagnosticRect(_ rect: CGRect) -> String {
+        "(\(diagnosticNumber(rect.origin.x)),\(diagnosticNumber(rect.origin.y)),\(diagnosticNumber(rect.width)),\(diagnosticNumber(rect.height)))"
+    }
+
+    private static func diagnosticNumber(_ value: CGFloat) -> String {
+        String(format: "%.1f", Double(value))
     }
 
     private static func pointsMatch(_ lhs: CGPoint, _ rhs: CGPoint) -> Bool {

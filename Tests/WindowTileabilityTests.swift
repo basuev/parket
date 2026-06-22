@@ -7,6 +7,7 @@ import Testing
 struct WindowTileabilityTests {
     @Test func documentWindowIsTileable() {
         #expect(TileableWindowPolicy.accepts(documentWindow()))
+        #expect(TileableWindowPolicy.rejectionReasons(documentWindow()).isEmpty)
     }
 
     @Test func standardOverlayWithoutWindowControlsIsNotTileable() {
@@ -16,6 +17,12 @@ struct WindowTileabilityTests {
         attributes.hasZoomButton = false
 
         #expect(!TileableWindowPolicy.accepts(attributes))
+        #expect(
+            TileableWindowPolicy.rejectionReasons(attributes) == [
+                .missingCloseButton,
+                .missingMinimizeButton,
+                .missingZoomButton,
+            ])
     }
 
     @Test func fixedSizeStandardDialogIsNotTileable() {
@@ -23,6 +30,7 @@ struct WindowTileabilityTests {
         attributes.canSetSize = false
 
         #expect(!TileableWindowPolicy.accepts(attributes))
+        #expect(TileableWindowPolicy.rejectionReasons(attributes) == [.sizeNotSettable])
     }
 
     @Test func modalStandardWindowIsNotTileable() {
@@ -30,6 +38,7 @@ struct WindowTileabilityTests {
         attributes.modal = true
 
         #expect(!TileableWindowPolicy.accepts(attributes))
+        #expect(TileableWindowPolicy.rejectionReasons(attributes) == [.modal])
     }
 
     private func documentWindow() -> TileableWindowAttributes {
