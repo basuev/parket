@@ -22,10 +22,12 @@ package final class WindowObserver {
     private static let syncCoalesceDelay: TimeInterval = 0.06
     private static let focusCoalesceDelay: TimeInterval = 0.015
     private static let startupReconcileDelays: [TimeInterval] = [0.25, 1.0]
+    private static let windowCreatedReconcileDelays: [TimeInterval] = [0.25, 1.0]
 
     private var observers: [pid_t: AXObserver] = [:]
     private var observedWindowElements: [pid_t: [AXUIElement]] = [:]
     private var syncWorks: [pid_t: DispatchWorkItem] = [:]
+    private var delayedSyncWorks: [pid_t: [DispatchWorkItem]] = [:]
     private var pendingSyncAllowsEmpty: [pid_t: Bool] = [:]
     private var focusWorks: [pid_t: DispatchWorkItem] = [:]
     private var isStarted = false
@@ -77,8 +79,8 @@ package final class WindowObserver {
         for app in WindowManager.managedApplications() {
             let pid = app.processIdentifier
             observeApp(pid: pid)
-            if let windows = PerformanceTelemetry.measure(.axSnapshot, { WindowManager.windows(pid: pid) }) {
-                observeWindows(windows, pid: pid)
+            if let snapshot = PerformanceTelemetry.measure(.axSnapshot, { WindowManager.windowSnapshot(pid: pid) }) {
+                observeWindowElements(snapshot.elements, pid: pid)
             }
         }
     }
@@ -97,11 +99,16 @@ package final class WindowObserver {
         for app in WindowManager.managedApplications() {
             let pid = app.processIdentifier
             observeApp(pid: pid)
-            guard let windows = PerformanceTelemetry.measure(.axSnapshot, { WindowManager.windows(pid: pid) }) else {
+            guard
+                let snapshot = PerformanceTelemetry.measure(
+                    .axSnapshot,
+                    { WindowManager.windowSnapshot(pid: pid) }
+                )
+            else {
                 continue
             }
-            WorkspaceManager.shared.syncWindows(pid: pid, windows: windows)
-            observeWindows(windows, pid: pid)
+            WorkspaceManager.shared.syncWindows(pid: pid, windows: snapshot.windows)
+            observeWindowElements(snapshot.elements, pid: pid)
         }
     }
 
@@ -114,13 +121,17 @@ package final class WindowObserver {
     }
 
     private func handleTerminateNotification(_ note: Notification) {
-        guard ParketRuntime.shared.isRunning else { return }
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
         let pid = app.processIdentifier
-        WorkspaceManager.shared.removeWindow(pid: pid)
+        if ParketRuntime.shared.isRunning {
+            WorkspaceManager.shared.removeWindow(pid: pid)
+        }
         observers.removeValue(forKey: pid)
         observedWindowElements.removeValue(forKey: pid)
         syncWorks.removeValue(forKey: pid)?.cancel()
+        for work in delayedSyncWorks.removeValue(forKey: pid) ?? [] {
+            work.cancel()
+        }
         pendingSyncAllowsEmpty.removeValue(forKey: pid)
         focusWorks.removeValue(forKey: pid)?.cancel()
     }
@@ -144,16 +155,16 @@ package final class WindowObserver {
     }
 
     private func trySyncWindows(pid: pid_t, attempt: Int, allowEmpty: Bool) {
-        let windows = PerformanceTelemetry.measure(.axSnapshot) {
-            WindowManager.windows(pid: pid)
+        let snapshot = PerformanceTelemetry.measure(.axSnapshot) {
+            WindowManager.windowSnapshot(pid: pid)
         }
-        guard let windows, allowEmpty || !windows.isEmpty else {
+        guard let snapshot, allowEmpty || !snapshot.windows.isEmpty else {
             retrySyncWindows(pid: pid, attempt: attempt, allowEmpty: allowEmpty)
             return
         }
 
-        WorkspaceManager.shared.syncWindows(pid: pid, windows: windows)
-        observeWindows(windows, pid: pid)
+        WorkspaceManager.shared.syncWindows(pid: pid, windows: snapshot.windows)
+        observeWindowElements(snapshot.elements, pid: pid)
     }
 
     private func retrySyncWindows(pid: pid_t, attempt: Int, allowEmpty: Bool) {
@@ -173,6 +184,20 @@ package final class WindowObserver {
         }
         syncWorks[pid] = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.syncCoalesceDelay, execute: work)
+    }
+
+    private func scheduleDelayedSyncWindows(pid: pid_t) {
+        for work in delayedSyncWorks.removeValue(forKey: pid) ?? [] {
+            work.cancel()
+        }
+        let works = Self.windowCreatedReconcileDelays.map { delay in
+            let work = DispatchWorkItem { [self] in
+                trySyncWindows(pid: pid, attempt: 0, allowEmpty: false)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            return work
+        }
+        delayedSyncWorks[pid] = works
     }
 
     private func scheduleFocusFollow(pid: pid_t) {
@@ -219,6 +244,7 @@ package final class WindowObserver {
         if notif == kAXWindowCreatedNotification {
             let pidValue = pid(for: element)
             scheduleSyncWindows(pid: pidValue, allowEmpty: false)
+            scheduleDelayedSyncWindows(pid: pidValue)
         } else if notif == kAXUIElementDestroyedNotification {
             let pidValue = pid(for: element)
             if let obs = observers[pidValue] {
@@ -226,6 +252,8 @@ package final class WindowObserver {
                     kAXUIElementDestroyedNotification,
                     kAXMovedNotification,
                     kAXResizedNotification,
+                    kAXWindowMiniaturizedNotification,
+                    kAXWindowDeminiaturizedNotification,
                 ] {
                     AXObserverRemoveNotification(obs, element, name as CFString)
                 }
@@ -234,6 +262,12 @@ package final class WindowObserver {
             WindowManager.invalidateAppliedGeometry(element)
             WorkspaceManager.shared.handleWindowDestroyed(pid: pidValue, element: element)
             scheduleSyncWindows(pid: pidValue, allowEmpty: true)
+        } else if notif == kAXWindowMiniaturizedNotification {
+            scheduleSyncWindows(pid: pid(for: element), allowEmpty: true)
+        } else if notif == kAXWindowDeminiaturizedNotification {
+            let pidValue = pid(for: element)
+            scheduleSyncWindows(pid: pidValue, allowEmpty: false)
+            scheduleDelayedSyncWindows(pid: pidValue)
         } else if notif == kAXFocusedWindowChangedNotification || notif == kAXFocusedUIElementChangedNotification {
             scheduleFocusFollow(pid: pid(for: element))
         } else if notif == kAXMovedNotification || notif == kAXResizedNotification {
@@ -247,14 +281,14 @@ package final class WindowObserver {
         AXObserverAddNotification(obs, element, kAXUIElementDestroyedNotification as CFString, nil)
         AXObserverAddNotification(obs, element, kAXMovedNotification as CFString, nil)
         AXObserverAddNotification(obs, element, kAXResizedNotification as CFString, nil)
+        AXObserverAddNotification(obs, element, kAXWindowMiniaturizedNotification as CFString, nil)
+        AXObserverAddNotification(obs, element, kAXWindowDeminiaturizedNotification as CFString, nil)
         observedWindowElements[pid, default: []].append(element)
     }
 
-    private func observeWindows(_ windows: [TrackedWindow], pid: pid_t) {
-        for window in windows {
-            for member in window.members {
-                observeWindow(element: member, pid: pid)
-            }
+    private func observeWindowElements(_ elements: [AXUIElement], pid: pid_t) {
+        for element in elements {
+            observeWindow(element: element, pid: pid)
         }
     }
 

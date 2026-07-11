@@ -39,4 +39,28 @@ struct MonitorStateTests {
         #expect(state.active == 1)
         #expect(state.previousActive == 1)
     }
+
+    @Test func primaryMigrationPreservesSurvivingWorkspaceAssignments() {
+        var surviving = MonitorWorkspaceState(
+            workspaces: [[1], [2], []],
+            layouts: [.tile, .monocle, .tile],
+            focusedIndices: [0, 0, 0],
+            active: 1,
+            previousActive: 0
+        )
+        let source = MonitorWorkspaceState(
+            workspaces: [[3], [], [4]],
+            layouts: [.monocle, .tile, .monocle],
+            focusedIndices: [0, 0, 0],
+            active: 2,
+            previousActive: 1
+        )
+
+        surviving.migratePrimaryState(from: source)
+
+        #expect(surviving.workspaces == [[3, 1], [2], [4]])
+        #expect(surviving.layouts == [.monocle, .monocle, .monocle])
+        #expect(surviving.active == 2)
+        #expect(surviving.previousActive == 1)
+    }
 }

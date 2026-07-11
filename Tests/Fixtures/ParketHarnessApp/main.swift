@@ -65,8 +65,29 @@ final class HarnessApp: NSObject, NSApplicationDelegate {
         panel.orderFront(nil)
 
         windows.append(contentsOf: [first, second, tab, minimized, panel])
+        if environmentFlag("PARKET_HARNESS_LIFECYCLE") {
+            scheduleDelayedWindow()
+        }
         print("parket-harness-app ready pid=\(ProcessInfo.processInfo.processIdentifier)")
         fflush(stdout)
+    }
+
+    private func scheduleDelayedWindow() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [self] in
+            let window = NSWindow(
+                contentRect: NSRect(x: 620, y: 220, width: 420, height: 260),
+                styleMask: [.titled],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Harness Delayed"
+            window.isReleasedWhenClosed = false
+            window.makeKeyAndOrderFront(nil)
+            windows.append(window)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            }
+        }
     }
 
     private func makeWorkspaceSwitchWindows() {

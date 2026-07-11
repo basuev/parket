@@ -15,10 +15,10 @@ test:
 	swift test --enable-swift-testing
 
 fmt:
-	swift format --recursive --in-place Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift scripts/ax-focus-check.swift scripts/ax-perf-check.swift scripts/send-hotkeys.swift scripts/workspace-latency-check.swift Package.swift
+	swift format --recursive --in-place Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift scripts/ax-focus-check.swift scripts/ax-perf-check.swift scripts/ax-lifecycle-check.swift scripts/send-hotkeys.swift scripts/workspace-latency-check.swift Package.swift
 
 lint:
-	swift format lint --recursive --strict Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift scripts/ax-focus-check.swift scripts/ax-perf-check.swift scripts/send-hotkeys.swift scripts/workspace-latency-check.swift Package.swift
+	swift format lint --recursive --strict Sources Entry Tests Benchmarks scripts/ax-smoke-check.swift scripts/ax-focus-check.swift scripts/ax-perf-check.swift scripts/ax-lifecycle-check.swift scripts/send-hotkeys.swift scripts/workspace-latency-check.swift Package.swift
 
 policy:
 	bash scripts/policy-check.sh

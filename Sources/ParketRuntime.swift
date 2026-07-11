@@ -57,6 +57,7 @@ package final class ParketRuntime {
             "config_path: \(Config.path)",
             "workspace_count: \(Config.shared.workspaceCount)",
             "monitor_count: \(ws.monitors.count)",
+            "ax_messaging_timeout_seconds: \(WindowManager.messagingTimeoutSeconds)",
         ])
         lines.append(contentsOf: Hotkeys.shared.diagnosticLines())
         lines.append("screen_topology: \(WindowManager.screenTopologySignature())")
@@ -120,6 +121,10 @@ package final class ParketRuntime {
     private func startServices() {
         guard !isRunning else { return }
 
+        let timeoutStatus = WindowManager.configureMessagingTimeout()
+        if timeoutStatus != .success {
+            startupIssue = "failed to configure AX messaging timeout: \(timeoutStatus.rawValue)"
+        }
         WorkspaceManager.shared.bootstrap()
         WindowObserver.shared.start()
         registerScreenObserver()

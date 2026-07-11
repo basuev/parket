@@ -140,7 +140,7 @@ func focusedWindowTitle() -> String? {
 }
 
 func screenRectsInAXCoordinates() -> [CGRect] {
-    let topEdge = NSScreen.screens.map(\.frame.maxY).max() ?? 1080
+    let topEdge = NSScreen.screens.first?.frame.maxY ?? 1080
     return NSScreen.screens.map { screen in
         let frame = screen.frame
         return CGRect(

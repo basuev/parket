@@ -216,4 +216,25 @@ package struct MonitorWorkspaceState<Element: Equatable>: Equatable {
             workspaces[active].append(contentsOf: overflow)
         }
     }
+
+    package mutating func migratePrimaryState(from source: MonitorWorkspaceState<Element>) {
+        let survivingWorkspaces = workspaces
+        let survivingLayouts = layouts
+        let survivingFocusedIndices = focusedIndices
+        workspaces = source.workspaces
+        layouts = source.layouts
+        focusedIndices = source.focusedIndices
+        active = source.active
+        previousActive = source.previousActive
+
+        for workspaceIndex in survivingWorkspaces.indices where workspaces.indices.contains(workspaceIndex) {
+            if workspaces[workspaceIndex].isEmpty, !survivingWorkspaces[workspaceIndex].isEmpty {
+                layouts[workspaceIndex] = survivingLayouts[workspaceIndex]
+                focusedIndices[workspaceIndex] = survivingFocusedIndices[workspaceIndex]
+            }
+            for element in survivingWorkspaces[workspaceIndex] where !workspaces[workspaceIndex].contains(element) {
+                workspaces[workspaceIndex].append(element)
+            }
+        }
+    }
 }

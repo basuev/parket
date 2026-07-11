@@ -145,7 +145,7 @@ package final class Monitor {
         workspaces[target].insert(window, at: 0)
         if target == active {
             scheduleRetile()
-        } else {
+        } else if !WorkspaceManager.shared.isTilingPaused {
             window.hideOffscreen(offscreenContext)
             WindowManager.invalidateAppliedGeometry(window)
         }
@@ -165,7 +165,7 @@ package final class Monitor {
         )
         guard updateExistingWindow(window) == .missing else { return }
         workspaces[target].insert(window, at: 0)
-        if target != active {
+        if target != active, !WorkspaceManager.shared.isTilingPaused {
             window.hideOffscreen(offscreenContext)
             WindowManager.invalidateAppliedGeometry(window)
         }
@@ -350,6 +350,15 @@ package final class Monitor {
 
     func applyScreenChangeGeometry() {
         retile(validate: true)
+        hideInactiveWorkspaces()
+    }
+
+    func applyResumeGeometry() {
+        retile(force: true)
+        hideInactiveWorkspaces()
+    }
+
+    private func hideInactiveWorkspaces() {
         for workspaceIndex in ScreenChangeVisibilityPlan.hiddenWorkspaceIndices(
             workspaceCount: workspaces.count,
             active: active
@@ -443,7 +452,12 @@ package final class Monitor {
 
     private func activeWorkspaceMatchesLayout(tolerance: CGFloat) -> Bool {
         let windows = workspaces[active]
-        let frames = Tiler.calculateFrames(count: windows.count, screen: tileFrame, layout: layouts[active])
+        let frames = Tiler.calculateFrames(
+            count: windows.count,
+            screen: tileFrame,
+            layout: layouts[active],
+            masterRatio: Config.shared.masterRatio
+        )
         guard frames.count == windows.count else { return false }
 
         for i in windows.indices {
@@ -525,6 +539,29 @@ package final class Monitor {
         other.focusedIndices = focusedIndices
         other.active = active
         other.previousActive = previousActive
+    }
+
+    func migratePrimaryState(from source: Monitor) {
+        var state = MonitorWorkspaceState(
+            workspaces: workspaces,
+            layouts: layouts,
+            focusedIndices: focusedIndices,
+            active: active,
+            previousActive: previousActive
+        )
+        let sourceState = MonitorWorkspaceState(
+            workspaces: source.workspaces,
+            layouts: source.layouts,
+            focusedIndices: source.focusedIndices,
+            active: source.active,
+            previousActive: source.previousActive
+        )
+        state.migratePrimaryState(from: sourceState)
+        workspaces = state.workspaces
+        layouts = state.layouts
+        focusedIndices = state.focusedIndices
+        active = state.active
+        previousActive = state.previousActive
     }
 
     func resetState() {

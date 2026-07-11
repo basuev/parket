@@ -37,6 +37,12 @@ package final class WorkspaceManager {
 
     package func bootstrap() {
         let screens = NSScreen.screens
+        guard !screens.isEmpty else {
+            focusedMonitorIndex = 0
+            handleScreenChange()
+            StatusBar.shared.update()
+            return
+        }
         let snapshot = WindowManager.screenSnapshot(for: screens)
         rebuildMonitors(screens: screens, snapshot: snapshot)
         focusedMonitorIndex = 0
@@ -59,11 +65,13 @@ package final class WorkspaceManager {
 
     func switchTo(_ index: Int) {
         guard !isTilingPaused else { return }
+        guard !monitors.isEmpty else { return }
         focusedMonitor.switchTo(index)
         scheduleStatusUpdate()
     }
 
     func switchToLast() {
+        guard !monitors.isEmpty else { return }
         let target = focusedMonitor.previousActive
         guard target != focusedMonitor.active else { return }
         switchTo(target)
@@ -71,6 +79,7 @@ package final class WorkspaceManager {
 
     func moveActiveWindowTo(_ index: Int) {
         guard !isTilingPaused else { return }
+        guard !monitors.isEmpty else { return }
         if let moved = focusedMonitor.moveActiveWindowTo(index) {
             refreshWindowRegistry(pid: moved.pid)
         }
@@ -79,6 +88,7 @@ package final class WorkspaceManager {
 
     @discardableResult
     func addWindow(_ window: TrackedWindow) -> WindowUpdate {
+        guard !monitors.isEmpty else { return .missing }
         for monitor in monitors {
             let result = monitor.updateExistingWindow(window)
             if result != .missing {
@@ -197,20 +207,24 @@ package final class WorkspaceManager {
     }
 
     func focusNext() {
+        guard !monitors.isEmpty else { return }
         focusedMonitor.focusNext()
     }
 
     func focusPrev() {
+        guard !monitors.isEmpty else { return }
         focusedMonitor.focusPrev()
     }
 
     func swapMaster() {
         guard !isTilingPaused else { return }
+        guard !monitors.isEmpty else { return }
         focusedMonitor.swapMaster()
     }
 
     func toggleLayout() {
         guard !isTilingPaused else { return }
+        guard !monitors.isEmpty else { return }
         focusedMonitor.toggleLayout()
         StatusBar.shared.update()
     }
@@ -284,15 +298,22 @@ package final class WorkspaceManager {
     }
 
     private func performWindowGeometryChange(pid: pid_t, element: AXUIElement) {
-        guard !isTilingPaused else { return }
-        guard let location = locateWindow(pid: pid, element: element) else { return }
+        guard let location = locateWindow(pid: pid, element: element) else {
+            scheduleWindowSnapshotSync(pid: pid, attempt: 0, delay: 0)
+            return
+        }
         guard let current = trackedWindow(at: location) else {
             refreshWindowRegistry(pid: pid)
             return
         }
         let monitor = current.monitor
-        guard !monitor.shouldSuppressGeometryNotification() else { return }
         let window = current.window
+        guard window.isTileable() else {
+            scheduleWindowSnapshotSync(pid: pid, attempt: 0, delay: 0)
+            return
+        }
+        guard !isTilingPaused else { return }
+        guard !monitor.shouldSuppressGeometryNotification() else { return }
         windowRegistry.upsert(window, at: location)
         WindowManager.invalidateAppliedGeometry(window)
         guard monitor.active == location.workspaceIndex else { return }
@@ -400,9 +421,13 @@ package final class WorkspaceManager {
         PerformanceTelemetry.measure(.screenChange) {
             screenChangeWork = nil
             extendScreenChangeSettleWindow(by: Self.screenChangePostSettleDelay)
+            let screens = NSScreen.screens
+            guard !screens.isEmpty else {
+                scheduleScreenChange(signature: "", attempt: 0)
+                return
+            }
             let old = Dictionary(uniqueKeysWithValues: monitors.map { ($0.displayID, $0) })
             let focusedDisplayID = monitors.isEmpty ? 0 : focusedMonitor.displayID
-            let screens = NSScreen.screens
             let snapshot = WindowManager.screenSnapshot(for: screens)
             rebuildMonitors(screens: screens, snapshot: snapshot)
 
@@ -490,7 +515,9 @@ package final class WorkspaceManager {
                 monitor.cancelPendingRetile()
             }
         } else {
-            retileNow()
+            for monitor in monitors {
+                monitor.applyResumeGeometry()
+            }
         }
         StatusBar.shared.update()
     }
@@ -577,7 +604,7 @@ package final class WorkspaceManager {
             guard let source = old[oldPrimaryDisplayID],
                 let target = monitors.first(where: { $0.displayID == newPrimaryDisplayID })
             else { return false }
-            target.copyState(from: source)
+            target.migratePrimaryState(from: source)
             return true
         case .swap(let oldPrimaryDisplayID, let newPrimaryDisplayID):
             guard let oldPrimary = monitors.first(where: { $0.displayID == oldPrimaryDisplayID }),

@@ -116,9 +116,6 @@ package final class StatusBar: NSObject, NSMenuDelegate {
     }
 
     @objc private func quit() {
-        if ParketRuntime.shared.permissions.isReady {
-            WorkspaceManager.shared.restoreAllWindows()
-        }
         NSApplication.shared.terminate(nil)
     }
 

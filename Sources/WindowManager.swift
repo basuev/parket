@@ -19,6 +19,11 @@ package enum WindowFrameWritePlan {
     }
 }
 
+struct WindowSnapshot {
+    let elements: [AXUIElement]
+    let windows: [TrackedWindow]
+}
+
 struct TrackedWindow: Equatable {
     let element: AXUIElement
     let focusElement: AXUIElement
@@ -74,27 +79,33 @@ struct TrackedWindow: Equatable {
     }
 
     @MainActor
-    func setPosition(_ point: CGPoint, force: Bool = false) {
+    @discardableResult
+    func setPosition(_ point: CGPoint, force: Bool = false) -> Bool {
         var p = point
-        guard let value = AXValueCreate(.cgPoint, &p) else { return }
+        guard let value = AXValueCreate(.cgPoint, &p) else { return false }
         for member in members {
             guard force || WindowManager.shouldApplyPosition(point, to: member) else { continue }
-            if WindowManager.setAttributeValue(member, kAXPositionAttribute as CFString, value) == .success {
-                WindowManager.recordAppliedPosition(point, for: member)
+            guard WindowManager.setAttributeValue(member, kAXPositionAttribute as CFString, value) == .success else {
+                return false
             }
+            WindowManager.recordAppliedPosition(point, for: member)
         }
+        return true
     }
 
     @MainActor
-    func setSize(_ size: CGSize, force: Bool = false) {
+    @discardableResult
+    func setSize(_ size: CGSize, force: Bool = false) -> Bool {
         var s = size
-        guard let value = AXValueCreate(.cgSize, &s) else { return }
+        guard let value = AXValueCreate(.cgSize, &s) else { return false }
         for member in members {
             guard force || WindowManager.shouldApplySize(size, to: member) else { continue }
-            if WindowManager.setAttributeValue(member, kAXSizeAttribute as CFString, value) == .success {
-                WindowManager.recordAppliedSize(size, for: member)
+            guard WindowManager.setAttributeValue(member, kAXSizeAttribute as CFString, value) == .success else {
+                return false
             }
+            WindowManager.recordAppliedSize(size, for: member)
         }
+        return true
     }
 
     @MainActor
@@ -105,15 +116,17 @@ struct TrackedWindow: Equatable {
     }
 
     @MainActor
-    func setFrame(_ rect: CGRect) {
+    @discardableResult
+    func setFrame(_ rect: CGRect) -> Bool {
         for operation in WindowFrameWritePlan.operations(current: getFrame(), target: rect) {
             switch operation {
             case .position:
-                setPosition(rect.origin, force: true)
+                guard setPosition(rect.origin, force: true) else { return false }
             case .size:
-                setSize(rect.size, force: true)
+                guard setSize(rect.size, force: true) else { return false }
             }
         }
+        return true
     }
 
     @MainActor
@@ -221,6 +234,7 @@ struct TrackedWindow: Equatable {
 
 @MainActor
 enum WindowManager {
+    static let messagingTimeoutSeconds: Float = 0.2
     private struct AppliedGeometry {
         var position: CGPoint?
         var size: CGSize?
@@ -235,6 +249,10 @@ enum WindowManager {
     private static let rejectedWindowDiagnosticLimit = 50
     private static var appliedGeometry: [CFHashCode: AppliedGeometry] = [:]
     private static var expectedFocusedWindow: TrackedWindow?
+
+    static func configureMessagingTimeout() -> AXError {
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), messagingTimeoutSeconds)
+    }
 
     static func isManagedApplication(_ app: NSRunningApplication) -> Bool {
         guard app.activationPolicy == .regular else { return false }
@@ -256,15 +274,8 @@ enum WindowManager {
     static func allWindows() -> [TrackedWindow] {
         var result: [TrackedWindow] = []
         for app in managedApplications() {
-            let pid = app.processIdentifier
-            let appRef = AXUIElementCreateApplication(pid)
-
-            var windowsValue: AnyObject?
-            guard copyAttributeValue(appRef, kAXWindowsAttribute as CFString, &windowsValue) == .success,
-                let windows = windowsValue as? [AXUIElement]
-            else { continue }
-
-            result.append(contentsOf: trackedWindows(pid: pid, windows: windows))
+            guard let snapshot = windowSnapshot(pid: app.processIdentifier) else { continue }
+            result.append(contentsOf: snapshot.windows)
         }
         return result
     }
@@ -279,6 +290,10 @@ enum WindowManager {
     }
 
     static func windows(pid: pid_t) -> [TrackedWindow]? {
+        windowSnapshot(pid: pid)?.windows
+    }
+
+    static func windowSnapshot(pid: pid_t) -> WindowSnapshot? {
         let appRef = AXUIElementCreateApplication(pid)
 
         var windowsValue: AnyObject?
@@ -286,7 +301,10 @@ enum WindowManager {
             let windows = windowsValue as? [AXUIElement]
         else { return nil }
 
-        return trackedWindows(pid: pid, windows: windows)
+        return WindowSnapshot(
+            elements: windows,
+            windows: trackedWindows(pid: pid, windows: windows)
+        )
     }
 
     static func trackedWindows(pid: pid_t, windows: [AXUIElement]) -> [TrackedWindow] {

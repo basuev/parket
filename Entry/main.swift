@@ -1,24 +1,47 @@
 import AppKit
 import ParketCore
 
-func setupCrashSafety() {
-    let restore: @convention(c) (Int32) -> Void = { _ in
-        MainActor.assumeIsolated {
-            WorkspaceManager.shared.restoreAllWindows()
-        }
-        exit(0)
+@MainActor
+final class TerminationCoordinator: NSObject, NSApplicationDelegate {
+    private var terminationRequested = false
+
+    func requestTermination() {
+        guard !terminationRequested else { return }
+        terminationRequested = true
+        NSApplication.shared.terminate(nil)
     }
-    signal(SIGTERM, restore)
-    signal(SIGINT, restore)
-    atexit {
-        MainActor.assumeIsolated {
-            WorkspaceManager.shared.restoreAllWindows()
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        WorkspaceManager.shared.restoreAllWindows()
+        return .terminateNow
+    }
+}
+
+@MainActor
+final class SignalCoordinator {
+    private var sources: [DispatchSourceSignal] = []
+
+    init(termination: TerminationCoordinator) {
+        for signalNumber in [SIGTERM, SIGINT] {
+            signal(signalNumber, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
+            source.setEventHandler {
+                MainActor.assumeIsolated {
+                    termination.requestTermination()
+                }
+            }
+            source.resume()
+            sources.append(source)
         }
     }
 }
 
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-setupCrashSafety()
+let termination = TerminationCoordinator()
+let signals = SignalCoordinator(termination: termination)
+app.delegate = termination
 ParketRuntime.shared.start()
-app.run()
+withExtendedLifetime((termination, signals)) {
+    app.run()
+}

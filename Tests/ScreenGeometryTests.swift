@@ -5,7 +5,7 @@ import Testing
 
 @Suite("Screen geometry")
 struct ScreenGeometryTests {
-    @Test func conversionUsesTopEdgeAcrossAllScreens() {
+    @Test func conversionUsesPrimaryScreenTopEdge() {
         let screens = [
             ScreenDescriptor(
                 displayID: 2,
@@ -28,6 +28,27 @@ struct ScreenGeometryTests {
         #expect(external == CGRect(x: 0, y: 0, width: 2560, height: 1440))
         #expect(builtin == CGRect(x: 413, y: 1440, width: 1512, height: 982))
         #expect(builtinVisible == CGRect(x: 413, y: 1472, width: 1512, height: 950))
+    }
+
+    @Test func displayAbovePrimaryKeepsNegativeAXCoordinates() {
+        let snapshot = ScreenSnapshot([
+            ScreenDescriptor(
+                displayID: 1,
+                frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1055),
+                scale: 2
+            ),
+            ScreenDescriptor(
+                displayID: 2,
+                frame: CGRect(x: 0, y: 1080, width: 1920, height: 1200),
+                visibleFrame: CGRect(x: 0, y: 1080, width: 1920, height: 1175),
+                scale: 1
+            ),
+        ])
+
+        #expect(snapshot.screen(displayID: 1)?.frame == CGRect(x: 0, y: 0, width: 1920, height: 1080))
+        #expect(snapshot.screen(displayID: 2)?.frame == CGRect(x: 0, y: -1200, width: 1920, height: 1200))
+        #expect(snapshot.screen(displayID: 2)?.visibleFrame == CGRect(x: 0, y: -1175, width: 1920, height: 1175))
     }
 
     @Test func snapshotKeepsConvertedFramesTogether() {

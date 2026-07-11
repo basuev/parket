@@ -33,7 +33,7 @@ package struct ScreenSnapshot: Equatable, Sendable {
     package let screens: [ConvertedScreenDescriptor]
 
     package init(_ descriptors: [ScreenDescriptor]) {
-        let topEdge = ScreenGeometry.topEdge(descriptors.map(\.frame))
+        let topEdge = ScreenGeometry.primaryTopEdge(descriptors.map(\.frame))
         screens = descriptors.map { descriptor in
             ConvertedScreenDescriptor(
                 displayID: descriptor.displayID,
@@ -57,7 +57,7 @@ package struct ScreenSnapshot: Equatable, Sendable {
 
 package enum ScreenGeometry {
     package static func convertRect(_ rect: CGRect, screens: [ScreenDescriptor]) -> CGRect {
-        convertRect(rect, topEdge: topEdge(screens.map(\.frame)))
+        convertRect(rect, topEdge: primaryTopEdge(screens.map(\.frame)))
     }
 
     package static func convertRect(_ rect: CGRect, topEdge: CGFloat) -> CGRect {
@@ -69,8 +69,8 @@ package enum ScreenGeometry {
         )
     }
 
-    package static func topEdge(_ frames: [CGRect]) -> CGFloat {
-        frames.map(\.maxY).max() ?? 1080
+    package static func primaryTopEdge(_ frames: [CGRect]) -> CGFloat {
+        frames.first?.maxY ?? 1080
     }
 
     package static func topologySignature(_ screens: [ScreenDescriptor]) -> String {

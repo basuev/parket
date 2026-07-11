@@ -17,6 +17,9 @@ Expected Checks:
 - Standard fixture windows are visible onscreen.
 - Utility panel is not counted as a standard tileable window.
 - Minimized fixture window is not counted as tileable.
+- A delayed standard window is adopted after it becomes tileable.
+- Restoring a minimized window adds it to the layout.
+- Minimizing a tiled window removes it from the layout.
 - parket exits through signal handling.
 - Fixture windows remain onscreen after parket exits.
 
