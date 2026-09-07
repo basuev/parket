@@ -47,6 +47,13 @@ package struct WorkspaceState: Equatable, Sendable {
     }
 }
 
+enum WorkspaceFocusRestoration {
+    static func index(savedIndex: Int, windowCount: Int) -> Int? {
+        guard windowCount > 0 else { return nil }
+        return min(max(savedIndex, 0), windowCount - 1)
+    }
+}
+
 struct ClosedWindowFocusRepair: Equatable, Sendable {
     let location: WindowLocation
 

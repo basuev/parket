@@ -618,8 +618,10 @@ package final class Monitor {
 
     func restoreFocusedWindow(afterWorkspaceSwitch: Bool = false) {
         let windows = workspaces[active]
-        guard !windows.isEmpty else { return }
-        let idx = restoredFocusIndex(in: windows, afterWorkspaceSwitch: afterWorkspaceSwitch)
+        guard let idx = WorkspaceFocusRestoration.index(savedIndex: focusedIndices[active], windowCount: windows.count)
+        else {
+            return
+        }
         let target = windows[idx]
         if afterWorkspaceSwitch {
             WorkspaceManager.shared.suppressExternalFocusFollow()
@@ -633,25 +635,15 @@ package final class Monitor {
         }
     }
 
-    private func restoredFocusIndex(in windows: [TrackedWindow], afterWorkspaceSwitch: Bool) -> Int {
-        if afterWorkspaceSwitch,
-            activeWorkspaceHasMultipleProcesses(),
-            let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-            let index = windows.firstIndex(where: { $0.pid == frontmostPID })
-        {
-            focusedIndices[active] = index
-            return index
-        }
-        return min(focusedIndices[active], windows.count - 1)
-    }
-
     private func activeWorkspaceHasMultipleProcesses() -> Bool {
         let windows = workspaces[active]
         guard let first = windows.first?.pid else { return false }
         return windows.contains { $0.pid != first }
     }
 
-    private func focusAfterWindowRemoval(_ target: TrackedWindow) {
+    func focusAfterWindowRemoval(_ target: TrackedWindow) {
+        guard let index = workspaces[active].firstIndex(of: target) else { return }
+        focusedIndices[active] = index
         moveFocusGeneration &+= 1
         let scheduledGeneration = moveFocusGeneration
         WorkspaceManager.shared.suppressExternalFocusFollow()
