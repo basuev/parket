@@ -15,6 +15,27 @@ package enum WindowFrameWritePlan {
     }
 }
 
+enum WindowGeometryWriteBatch {
+    static func apply<Operations: Sequence>(
+        _ operations: Operations,
+        write: (Operations.Element) -> AXError
+    ) -> AXError {
+        var result = AXError.success
+        for operation in operations {
+            let error = write(operation)
+            switch error {
+            case .success:
+                continue
+            case .cannotComplete, .apiDisabled:
+                return error
+            default:
+                result = error
+            }
+        }
+        return result
+    }
+}
+
 package struct WindowFrameSettleAttempt: Equatable {
     package let operation: FrameWriteOperation
     package let frame: CGRect
@@ -124,31 +145,39 @@ struct TrackedWindow: Equatable {
     @MainActor
     @discardableResult
     func setPosition(_ point: CGPoint, force: Bool = false) -> Bool {
+        applyPosition(point, force: force) == .success
+    }
+
+    @MainActor
+    private func applyPosition(_ point: CGPoint, force: Bool) -> AXError {
         var p = point
-        guard let value = AXValueCreate(.cgPoint, &p) else { return false }
-        for member in members {
-            guard force || WindowManager.shouldApplyPosition(point, to: member) else { continue }
-            guard WindowManager.setAttributeValue(member, kAXPositionAttribute as CFString, value) == .success else {
-                return false
-            }
+        guard let value = AXValueCreate(.cgPoint, &p) else { return .failure }
+        return WindowGeometryWriteBatch.apply(members) { member in
+            guard force || WindowManager.shouldApplyPosition(point, to: member) else { return .success }
+            let error = WindowManager.setAttributeValue(member, kAXPositionAttribute as CFString, value)
+            guard error == .success else { return error }
             WindowManager.recordAppliedPosition(point, for: member)
+            return .success
         }
-        return true
     }
 
     @MainActor
     @discardableResult
     func setSize(_ size: CGSize, force: Bool = false) -> Bool {
+        applySize(size, force: force) == .success
+    }
+
+    @MainActor
+    private func applySize(_ size: CGSize, force: Bool) -> AXError {
         var s = size
-        guard let value = AXValueCreate(.cgSize, &s) else { return false }
-        for member in members {
-            guard force || WindowManager.shouldApplySize(size, to: member) else { continue }
-            guard WindowManager.setAttributeValue(member, kAXSizeAttribute as CFString, value) == .success else {
-                return false
-            }
+        guard let value = AXValueCreate(.cgSize, &s) else { return .failure }
+        return WindowGeometryWriteBatch.apply(members) { member in
+            guard force || WindowManager.shouldApplySize(size, to: member) else { return .success }
+            let error = WindowManager.setAttributeValue(member, kAXSizeAttribute as CFString, value)
+            guard error == .success else { return error }
             WindowManager.recordAppliedSize(size, for: member)
+            return .success
         }
-        return true
     }
 
     @MainActor
@@ -161,15 +190,15 @@ struct TrackedWindow: Equatable {
     @MainActor
     @discardableResult
     func setFrame(_ rect: CGRect) -> Bool {
-        for operation in WindowFrameWritePlan.operations(current: getFrame(), target: rect) {
+        WindowGeometryWriteBatch.apply(WindowFrameWritePlan.operations(current: getFrame(), target: rect)) {
+            operation in
             switch operation {
             case .position:
-                guard setPosition(rect.origin, force: true) else { return false }
+                applyPosition(rect.origin, force: true)
             case .size:
-                guard setSize(rect.size, force: true) else { return false }
+                applySize(rect.size, force: true)
             }
-        }
-        return true
+        } == .success
     }
 
     @MainActor
