@@ -87,6 +87,9 @@ struct TrackedWindow: Equatable {
     }
 
     static func == (lhs: TrackedWindow, rhs: TrackedWindow) -> Bool {
+        if CFEqual(lhs.element, rhs.element) {
+            return true
+        }
         if lhs.hasElement(rhs) {
             return true
         }

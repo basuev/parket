@@ -42,8 +42,8 @@ final class ShadowWindowRegistry {
         }
         entriesByPID = next
         guard let focusedEntry else { return }
-        self.focusedEntry = locate(focusedEntry.window).map {
-            Entry(window: focusedEntry.window, location: $0)
+        self.focusedEntry = entriesByPID[focusedEntry.window.pid]?.first { $0.window == focusedEntry.window }.map {
+            Entry(window: focusedEntry.window, location: $0.location)
         }
     }
 
@@ -67,7 +67,8 @@ final class ShadowWindowRegistry {
         }
     }
 
-    func remove(pid: pid_t, element: AXUIElement) -> RemovedWindowRecord? {
+    func remove(pid: pid_t, element: AXUIElement, from monitors: [Monitor]) -> RemovedWindowRecord? {
+        guard locate(pid: pid, element: element, in: monitors) != nil else { return nil }
         guard let entry = entriesByPID[pid]?.first(where: { $0.window.containsElement(element) }) else {
             return nil
         }
@@ -88,15 +89,42 @@ final class ShadowWindowRegistry {
         upsert(window, at: location)
     }
 
-    func locate(_ window: TrackedWindow) -> WindowLocation? {
-        entriesByPID[window.pid]?.first { $0.window == window }?.location
+    func locate(_ window: TrackedWindow, in monitors: [Monitor]) -> WindowLocation? {
+        locate(pid: window.pid, in: monitors) { $0 == window }
     }
 
-    func locate(pid: pid_t, element: AXUIElement) -> WindowLocation? {
-        entriesByPID[pid]?.first { $0.window.containsElement(element) }?.location
+    func locate(pid: pid_t, element: AXUIElement, in monitors: [Monitor]) -> WindowLocation? {
+        locate(pid: pid, in: monitors) { $0.containsElement(element) }
     }
 
-    func singleTrackedWindow(pid: pid_t) -> (window: TrackedWindow, location: WindowLocation)? {
+    private func locate(
+        pid: pid_t,
+        in monitors: [Monitor],
+        matching predicate: (TrackedWindow) -> Bool
+    ) -> WindowLocation? {
+        if let entry = entriesByPID[pid]?.first(where: { predicate($0.window) }),
+            isCurrent(entry, in: monitors)
+        {
+            return entry.location
+        }
+        rebuild(from: monitors)
+        return entriesByPID[pid]?.first { predicate($0.window) }?.location
+    }
+
+    private func isCurrent(_ entry: Entry, in monitors: [Monitor]) -> Bool {
+        let location = entry.location
+        guard monitors.indices.contains(location.monitorIndex) else { return false }
+        let workspaces = monitors[location.monitorIndex].workspaces
+        guard workspaces.indices.contains(location.workspaceIndex) else { return false }
+        let windows = workspaces[location.workspaceIndex]
+        guard windows.indices.contains(location.windowIndex) else { return false }
+        return windows[location.windowIndex] == entry.window
+    }
+
+    func singleTrackedWindow(pid: pid_t, in monitors: [Monitor]) -> (window: TrackedWindow, location: WindowLocation)? {
+        if entriesByPID[pid]?.allSatisfy({ isCurrent($0, in: monitors) }) != true {
+            rebuild(from: monitors)
+        }
         guard let entries = entriesByPID[pid] else { return nil }
         var result: Entry?
         for entry in entries {

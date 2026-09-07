@@ -289,7 +289,7 @@ package final class WorkspaceManager {
     }
 
     func handleWindowDestroyed(pid: pid_t, element: AXUIElement) {
-        if let removed = windowRegistry.remove(pid: pid, element: element) {
+        if let removed = windowRegistry.remove(pid: pid, element: element, from: monitors) {
             WindowManager.clearExpectedFocus(removed.window)
             pendingClosedWindowPIDs.insert(pid)
             suppressExternalFocusFollow()
@@ -629,19 +629,11 @@ package final class WorkspaceManager {
     }
 
     private func locateWindow(_ window: TrackedWindow) -> WindowLocation? {
-        if let location = windowRegistry.locate(window) {
-            return location
-        }
-        refreshWindowRegistry()
-        return windowRegistry.locate(window)
+        windowRegistry.locate(window, in: monitors)
     }
 
     private func locateWindow(pid: pid_t, element: AXUIElement) -> WindowLocation? {
-        if let location = windowRegistry.locate(pid: pid, element: element) {
-            return location
-        }
-        refreshWindowRegistry()
-        return windowRegistry.locate(pid: pid, element: element)
+        windowRegistry.locate(pid: pid, element: element, in: monitors)
     }
 
     private func trackedWindow(at location: WindowLocation) -> (monitor: Monitor, window: TrackedWindow)? {
@@ -656,11 +648,7 @@ package final class WorkspaceManager {
     }
 
     private func singleTrackedWindow(pid: pid_t) -> (window: TrackedWindow, location: WindowLocation)? {
-        if let result = windowRegistry.singleTrackedWindow(pid: pid) {
-            return result
-        }
-        refreshWindowRegistry()
-        return windowRegistry.singleTrackedWindow(pid: pid)
+        windowRegistry.singleTrackedWindow(pid: pid, in: monitors)
     }
 
     private func placementTarget(for pid: pid_t) -> WorkspacePlacementTarget {
