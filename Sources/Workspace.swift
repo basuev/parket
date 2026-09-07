@@ -136,8 +136,9 @@ package final class WorkspaceManager {
         windowSnapshotSyncWorks.removeValue(forKey: pid)?.cancel()
 
         var changed = false
+        var unmatchedCurrent = windows
         for monitor in monitors {
-            if monitor.removeStaleWindows(pid: pid, current: windows) {
+            if monitor.removeStaleWindows(pid: pid, unmatchedCurrent: &unmatchedCurrent) {
                 changed = true
             }
         }

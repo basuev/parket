@@ -211,6 +211,21 @@ struct WorkspaceStateTests {
             ) == [0, 1, 3])
     }
 
+    @Test func workspaceWindowDeduplicationPreservesFirstOccurrenceOrder() {
+        let windows = WorkspaceWindowDeduplication.unique([3, 1, 3, 2, 1, 4])
+
+        #expect(windows == [3, 1, 2, 4])
+    }
+
+    @Test func snapshotReconciliationConsumesEachCurrentWindowOnce() {
+        var current = [3, 4]
+
+        #expect(!WindowSnapshotReconciliation.isStale(3, unmatchedCurrent: &current))
+        #expect(WindowSnapshotReconciliation.isStale(3, unmatchedCurrent: &current))
+        #expect(!WindowSnapshotReconciliation.isStale(4, unmatchedCurrent: &current))
+        #expect(current.isEmpty)
+    }
+
     @Test func windowLocationBoundsRejectStaleIndices() {
         let current = WindowLocation(monitorIndex: 1, workspaceIndex: 2, windowIndex: 3)
         #expect(WindowLocationBounds.containsMonitor(current, monitorCount: 2))
@@ -221,5 +236,4 @@ struct WorkspaceStateTests {
         #expect(!WindowLocationBounds.containsWorkspace(current, workspaceCount: 2))
         #expect(!WindowLocationBounds.containsWindow(current, windowCount: 3))
     }
-
 }

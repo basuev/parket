@@ -129,6 +129,27 @@ enum ScreenChangeEmptySnapshotPolicy {
     }
 }
 
+enum WorkspaceWindowDeduplication {
+    static func unique<Element: Equatable>(_ elements: [Element]) -> [Element] {
+        var result: [Element] = []
+        for element in elements where !result.contains(element) {
+            result.append(element)
+        }
+        return result
+    }
+}
+
+enum WindowSnapshotReconciliation {
+    static func isStale<Element: Equatable>(
+        _ tracked: Element,
+        unmatchedCurrent: inout [Element]
+    ) -> Bool {
+        guard let index = unmatchedCurrent.firstIndex(of: tracked) else { return true }
+        unmatchedCurrent.remove(at: index)
+        return false
+    }
+}
+
 enum ScreenChangeVisibilityPlan {
     static func hiddenWorkspaceIndices(workspaceCount: Int, active: Int) -> [Int] {
         guard workspaceCount > 0 else { return [] }

@@ -13,8 +13,8 @@ package final class Monitor {
     private static let geometrySuppressionDelay: TimeInterval = 0.20
     private static let scheduledRetileDelay: TimeInterval = 0.025
     private static let frameTolerance: CGFloat = 2.0
-    private static let singleWindowSettleStepDelay: TimeInterval = 0.055
-    private static let singleWindowSettleMaxAttempts = 4
+    private static let windowSettleStepDelay: TimeInterval = 0.30
+    private static let windowSettleMaxSteps = 8
 
     let displayID: CGDirectDisplayID
     var screen: NSScreen
@@ -210,9 +210,13 @@ package final class Monitor {
         return changed
     }
 
-    func removeStaleWindows(pid: pid_t, current: [TrackedWindow]) -> Bool {
+    func removeStaleWindows(pid: pid_t, unmatchedCurrent: inout [TrackedWindow]) -> Bool {
         removeWindows { window in
-            window.pid == pid && !current.contains(window)
+            window.pid == pid
+                && WindowSnapshotReconciliation.isStale(
+                    window,
+                    unmatchedCurrent: &unmatchedCurrent
+                )
         }
     }
 
@@ -312,6 +316,7 @@ package final class Monitor {
     func retile(force: Bool = false, validate: Bool = true) -> CGRect {
         guard force || !WorkspaceManager.shared.isTilingPaused else { return tileFrame }
         return PerformanceTelemetry.measure(.retile) {
+            deduplicateActiveWorkspace()
             if validate {
                 cleanActiveWorkspace()
             }
@@ -329,11 +334,13 @@ package final class Monitor {
             for i in windows.indices {
                 windows[i].setFrame(frames[i])
             }
-            if let window = windows.first, let frame = frames.first, windows.count == 1 {
-                scheduleSingleWindowSettle(
-                    window: window,
-                    target: frame,
-                    attempt: 0
+            for i in windows.indices {
+                scheduleWindowSettle(
+                    window: windows[i],
+                    target: frames[i],
+                    step: 0,
+                    generation: geometryOperationGeneration,
+                    previousAttempt: nil
                 )
             }
             return tileFrame
@@ -380,68 +387,100 @@ package final class Monitor {
         clampFocusedIndex()
     }
 
+    private func deduplicateActiveWorkspace() {
+        let unique = WorkspaceWindowDeduplication.unique(workspaces[active])
+        guard unique.count != workspaces[active].count else { return }
+        workspaces[active] = unique
+        clampFocusedIndex()
+    }
+
     private func clampFocusedIndex() {
         focusedIndices[active] = min(focusedIndices[active], max(workspaces[active].count - 1, 0))
     }
 
-    private func scheduleSingleWindowSettle(
+    private func scheduleWindowSettle(
         window: TrackedWindow,
         target: CGRect,
-        attempt: Int
+        step: Int,
+        generation: UInt64,
+        previousAttempt: WindowFrameSettleAttempt?
     ) {
-        guard attempt < Self.singleWindowSettleMaxAttempts else { return }
-        guard shouldSettleSingleWindow(window, target: target) else { return }
+        guard step < Self.windowSettleMaxSteps else { return }
+        if step == 0,
+            windowSettleState(
+                window,
+                target: target,
+                generation: generation,
+                previousAttempt: nil
+            ) == nil
+        {
+            return
+        }
 
-        let delay = Self.singleWindowSettleStepDelay
+        let delay = Self.windowSettleStepDelay
+        extendGeometrySuppression(by: delay + Self.geometrySuppressionDelay)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [self] in
-            guard shouldSettleSingleWindow(window, target: target) else { return }
-            extendGeometrySuppression()
-            window.setPosition(target.origin, force: true)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay * 2) { [self] in
-            guard shouldSettleSingleWindow(window, target: target) else { return }
-            extendGeometrySuppression()
-            window.setSize(target.size, force: true)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay * 3) { [self] in
-            guard shouldSettleSingleWindow(window, target: target) else { return }
-            extendGeometrySuppression()
-            window.setPosition(target.origin, force: true)
-            scheduleSingleWindowSettle(
+            guard
+                let state = windowSettleState(
+                    window,
+                    target: target,
+                    generation: generation,
+                    previousAttempt: previousAttempt
+                )
+            else {
+                return
+            }
+            let applied: Bool
+            switch state.operation {
+            case .position:
+                applied = window.setPosition(target.origin, force: true)
+            case .size:
+                applied = window.setSize(target.size, force: true)
+            }
+            guard applied else { return }
+            scheduleWindowSettle(
                 window: window,
                 target: target,
-                attempt: attempt + 1
+                step: step + 1,
+                generation: generation,
+                previousAttempt: WindowFrameSettleAttempt(
+                    operation: state.operation,
+                    frame: state.frame
+                )
             )
         }
     }
 
-    private func shouldSettleSingleWindow(
+    private func windowSettleState(
         _ window: TrackedWindow,
-        target: CGRect
-    ) -> Bool {
-        !WorkspaceManager.shared.isTilingPaused
-            && WorkspaceManager.shared.monitors.contains { $0 === self }
-            && workspaces.indices.contains(active)
-            && workspaces[active].count == 1
-            && workspaces[active].contains(window)
-            && activeWorkspaceTargetMatches(target)
-            && !windowMatchesFrame(window, target)
-    }
-
-    private func activeWorkspaceTargetMatches(_ target: CGRect) -> Bool {
+        target: CGRect,
+        generation: UInt64,
+        previousAttempt: WindowFrameSettleAttempt?
+    ) -> (operation: FrameWriteOperation, frame: CGRect)? {
+        guard geometryOperationGeneration == generation else { return nil }
+        guard !WorkspaceManager.shared.isTilingPaused else { return nil }
+        guard WorkspaceManager.shared.monitors.contains(where: { $0 === self }) else { return nil }
+        guard workspaces.indices.contains(active) else { return nil }
+        let windows = workspaces[active]
+        guard let index = windows.firstIndex(of: window) else { return nil }
         let frames = Tiler.calculateFrames(
-            count: workspaces[active].count,
+            count: windows.count,
             screen: tileFrame,
             layout: layouts[active],
             masterRatio: Config.shared.masterRatio
         )
-        guard frames.count == 1, let frame = frames.first else { return false }
-        return framesMatch(frame, target, tolerance: Self.frameTolerance)
-    }
-
-    private func windowMatchesFrame(_ window: TrackedWindow, _ target: CGRect) -> Bool {
-        guard let frame = window.getFrame() else { return false }
-        return framesMatch(frame, target, tolerance: Self.frameTolerance)
+        guard frames.indices.contains(index) else { return nil }
+        guard framesMatch(frames[index], target, tolerance: Self.frameTolerance) else { return nil }
+        guard let frame = window.getFrame() else { return nil }
+        guard
+            let operation = WindowFrameSettlePlan.operation(
+                current: frame,
+                target: target,
+                tolerance: Self.frameTolerance,
+                previousAttempt: previousAttempt
+            )
+        else { return nil }
+        return (operation, frame)
     }
 
     private func invalidateActiveWorkspaceAppliedGeometry() {
@@ -480,10 +519,10 @@ package final class Monitor {
         ignoreGeometryUntil = ProcessInfo.processInfo.systemUptime + Self.geometrySuppressionDelay
     }
 
-    private func extendGeometrySuppression() {
+    private func extendGeometrySuppression(by delay: TimeInterval) {
         ignoreGeometryUntil = max(
             ignoreGeometryUntil,
-            ProcessInfo.processInfo.systemUptime + Self.geometrySuppressionDelay
+            ProcessInfo.processInfo.systemUptime + delay
         )
     }
 

@@ -8,14 +8,54 @@ package enum FrameWriteOperation: Equatable {
 
 package enum WindowFrameWritePlan {
     package static func operations(current: CGRect?, target: CGRect) -> [FrameWriteOperation] {
-        var result: [FrameWriteOperation] = []
         if let current, target.width < current.width || target.height < current.height {
-            result.append(.size)
+            return [.size, .position]
         }
-        result.append(.position)
-        result.append(.size)
-        result.append(.position)
-        return result
+        return [.position, .size]
+    }
+}
+
+package struct WindowFrameSettleAttempt: Equatable {
+    package let operation: FrameWriteOperation
+    package let frame: CGRect
+
+    package init(operation: FrameWriteOperation, frame: CGRect) {
+        self.operation = operation
+        self.frame = frame
+    }
+}
+
+package enum WindowFrameSettlePlan {
+    package static func operation(
+        current: CGRect?,
+        target: CGRect,
+        tolerance: CGFloat,
+        previousAttempt: WindowFrameSettleAttempt? = nil
+    ) -> FrameWriteOperation? {
+        guard let current else { return nil }
+        let operation: FrameWriteOperation?
+        if abs(current.origin.x - target.origin.x) > tolerance
+            || abs(current.origin.y - target.origin.y) > tolerance
+        {
+            operation = .position
+        } else if abs(current.width - target.width) > tolerance
+            || abs(current.height - target.height) > tolerance
+        {
+            operation = .size
+        } else {
+            operation = nil
+        }
+        guard let operation else { return nil }
+        guard let previousAttempt, previousAttempt.operation == operation else { return operation }
+        guard framesMatch(previousAttempt.frame, current, tolerance: tolerance) else { return operation }
+        return nil
+    }
+
+    private static func framesMatch(_ lhs: CGRect, _ rhs: CGRect, tolerance: CGFloat) -> Bool {
+        abs(lhs.origin.x - rhs.origin.x) <= tolerance
+            && abs(lhs.origin.y - rhs.origin.y) <= tolerance
+            && abs(lhs.width - rhs.width) <= tolerance
+            && abs(lhs.height - rhs.height) <= tolerance
     }
 }
 
