@@ -1,4 +1,6 @@
 .build/
+*.profraw
+*.profdata
 parket.app/
 tatami.app/
 *.zip
