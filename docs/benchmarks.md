@@ -49,10 +49,8 @@ Full visible and focus latency from the same run:
 | native-tabs | parket visible p50/p95/p99/mean 5.2/20.4/25.5/7.8 ms; focus p50/p95/p99/mean 6.2/21.5/26.3/9.1 ms. AeroSpace exposed 30 switching fixture windows on workspace 1, expected 6 |
 | multi-monitor | parket visible p50/p95/p99/mean 3.8/14.4/14.9/5.3 ms vs AeroSpace 10.9/17.5/21.3/10.7 ms; parket focus p50/p95/p99/mean 5.1/15.2/15.7/6.6 ms vs AeroSpace 28.1/38.9/44.7/26.8 ms |
 
-## Claim
+## Scope
 
-Use this wording in release notes:
+In this run, parket had lower focus latency p95 in the default and multi-monitor scenarios, where both managers passed correctness checks. parket also passed large-9x8, multi-app, and native-tabs; AeroSpace failed correctness checks in those scenarios, so their latency results are not comparable.
 
-> The parket workspace switch path is faster than AeroSpace in correctness-valid UX latency comparisons. In the same matrix, parket passes large, multi-app, native-tab, and multi-monitor scenarios that AeroSpace does not pass under this harness.
-
-Avoid broader claims. The benchmark covers the fixture scenarios above, on the local machine and display setup listed in the run notes.
+These results cover only the fixture scenarios, local machine, and display setup above.
