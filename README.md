@@ -1,5 +1,14 @@
 # parket
 
+> [!WARNING]
+> **parket is no longer actively maintained.**
+>
+> **I have switched back to dwm on a Linux machine.** I will no longer have a Mac available to develop or test parket.
+>
+> Existing releases remain available, but bug fixes, new features, and compatibility with future macOS versions are not guaranteed.
+>
+> The repository remains open for a [new maintainer or a maintained fork](https://github.com/basuev/parket/issues/3). Responses and PR merges are not guaranteed.
+
 A small native tiling window manager for macOS.
 
 It tiles normal document windows with a dwm-style master-stack layout and emulates workspaces by moving inactive workspace windows offscreen. It uses Swift, public macOS APIs, and zero runtime dependencies. It does not require SIP changes.
@@ -134,9 +143,13 @@ See [docs/benchmarks.md](docs/benchmarks.md) for the full matrix, run notes, and
 
 ## Contributing
 
-Use issues for reproducible bugs, app compatibility reports, and scoped feature proposals. Good reports include macOS version, install method, affected apps, steps to reproduce, and the diagnostic report when relevant.
+Active development has stopped because the author has switched back to dwm on Linux and will no longer have a Mac available for testing.
 
-PRs should be small, pass `make check`, and preserve the project constraints: public macOS APIs, no runtime dependencies, small native code, recoverable window movement.
+Documentation fixes may still be reviewed. Changes to window behavior need verification by a contributor with a Mac. Passing `make check` alone does not replace [AX smoke checks](Tests/Smoke/README.md) in a real macOS session.
+
+Responses, reviews, and PR merges are not guaranteed.
+
+If you want to maintain parket or a fork, comment on the [maintainer search issue](https://github.com/basuev/parket/issues/3). Forks are welcome under the MIT license.
 
 ## License
 
